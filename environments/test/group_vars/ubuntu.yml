@@ -1,0 +1,3 @@
+---
+firewall_service: ufw
+package_manager: apt

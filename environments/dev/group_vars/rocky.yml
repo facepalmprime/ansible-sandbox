@@ -1,0 +1,4 @@
+---
+# Variables applied to Rocky Linux hosts in dev
+firewall_service: firewalld
+package_manager: dnf

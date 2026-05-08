@@ -1,0 +1,4 @@
+---
+# Variables applied to Ubuntu hosts in dev
+firewall_service: ufw
+package_manager: apt

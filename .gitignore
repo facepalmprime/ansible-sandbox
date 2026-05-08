@@ -1,0 +1,21 @@
+# Vault password file - never commit this
+secret.txt
+*.vault.pass
+
+# Collections installed locally
+collections/ansible_collections/
+
+# Molecule artifacts
+.molecule/
+molecule/**/molecule.yml~
+
+# Editor artifcacts
+*.swp
+*.swo
+.DS_Store
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+.venv/
