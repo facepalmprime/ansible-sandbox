@@ -1,0 +1,11 @@
+---
+profile: production
+
+exclude_paths:
+  - .git/
+  - collections/
+
+
+# Warn on experimental rules dont don't fail
+warn_list:
+  - experimental

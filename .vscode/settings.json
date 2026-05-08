@@ -1,0 +1,12 @@
+{
+  "ansible.ansible.path": "ansible",
+  "ansible.ansibleLint.enabled": true,
+  "ansible.ansibleLint.path": "ansible-lint",
+  "ansible.python.interpreterPath": "/usr/bin/python3",
+  "files.eol": "\n",
+  "[yaml]": {
+    "editor.defaultFormatter": "redhat.vscode-yaml",
+    "editor.tabSize": 2,
+    "editor.insertSpaces": true
+  }
+}

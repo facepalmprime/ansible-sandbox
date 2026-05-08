@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Runs ansible-lint before every commit.
+# A lint failure blocks the commit - fix the violation, then commit again.
+
+set -e
+
+echo "Running ansible-lint..."
+ansible-lint
+
+echo "ansible-lint passed."
