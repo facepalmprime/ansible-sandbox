@@ -1,0 +1,8 @@
+---
+- name: Pre-flight connectivity check
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Verify host is reachable
+      ansible.builtin.ping:
