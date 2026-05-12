@@ -1,0 +1,37 @@
+---
+- name: Create ansible group
+  ansible.builtin.group:
+    name: ansible
+    state: present
+
+- name: Create ansible service account
+  ansible.builtin.user:
+    name: ansible
+    group: ansible
+    shell: /bin/bash
+    create_home: true
+    password_lock: true
+    comment: Ansible automation service account
+
+- name: Create .ssh directory for ansible user
+  ansible.builtin.file:
+    path: /home/ansible/.ssh
+    state: directory
+    owner: ansible
+    group: ansible
+    mode: '0700'
+
+- name: Deploy SSH authorized key for ansible user
+  ansible.posix.authorized_key:
+    user: ansible
+    key: "{{ bootstrap_ansible_pubkey }}"
+    state: present
+
+- name: Configure passwordless sudo for ansible user
+  ansible.builtin.copy:
+    content: "ansible ALL=(ALL) NOPASSWD: ALL\n"
+    dest: /etc/sudoers.d/ansible
+    owner: root
+    group: root
+    mode: '0440'
+    validate: /usr/sbin/visudo -cf %s

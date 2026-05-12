@@ -1,0 +1,10 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    bootstrap_ansible_pubkey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestKeyForMoleculeTesting molecule-test-key"
+  tasks:
+    - name: Include bootstrap role
+      ansible.builtin.include_role:
+        name: bootstrap

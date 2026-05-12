@@ -1,0 +1,6 @@
+---
+- name: Test bootstrap role
+  hosts: localhost
+  remote_user: root
+  roles:
+    - bootstrap

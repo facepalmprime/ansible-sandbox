@@ -1,0 +1,2 @@
+---
+bootstrap_ansible_pubkey: "{{ lookup('file', '~/.ssh/ansible_id_rsa.pub') }}"
