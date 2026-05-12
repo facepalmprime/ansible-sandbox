@@ -19,3 +19,7 @@ __pycache__/
 *.pyc
 *.pyo
 .venv/
+# Host-specific variables -- contain IP's never commit 
+environments/*/host_vars/*.yml
+# But do commit the example files
+!environments/*/host_vars/*.yml.example

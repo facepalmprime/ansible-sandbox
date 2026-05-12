@@ -1,7 +1,23 @@
 ---
 - name: Bootstrap ansible service account
   hosts: all
-  gather_facts: true
+  gather_facts: false
+  become: true
+
+  pre_tasks:
+    - name: Ensure python3 is installed (raw -- no Python required)
+      ansible.builtin.raw: |
+        if command -v python3 >/dev/null 2>&1; then
+          echo "python3 present"
+        elif command -v dnf >/dev/null 2>&1; then
+          dnf install -y python3
+        elif command -v apt-get >/dev/null 2>&1; then
+          apt-get install -y python3
+        fi
+      changed_when: false
+
+    - name: Gather facts (now that Python 3 exists)
+      ansible.builtin.setup:
 
   roles:
     - role: bootstrap
