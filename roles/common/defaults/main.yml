@@ -1,2 +1,14 @@
 ---
-# defaults file for roles/common
+common_timezone: "America/Los_Angeles"
+
+common_ntp_servers:
+  - "0.pool.ntp.org"
+  - "1.pool.ntp.org"
+  - "2.pool.ntp.org"
+
+common_packages:
+  - vim
+  - curl
+  - wget
+  - tmux
+  - git

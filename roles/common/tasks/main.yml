@@ -1,2 +1,117 @@
 ---
-# tasks file for roles/common
+- name: Include OS-family variables
+  ansible.builtin.include_vars: "{{ ansible_os_family }}.yml"
+
+# - Hostname
+- name: Set hostname
+  ansible.builtin.hostname:
+    name: "{{ inventory_hostname }}"
+  tags: hostname
+  when: env_name | default('') != 'molecule'
+
+# - Timezone
+- name: Set timezone
+  community.general.timezone:
+    name: "{{ common_timezone }}"
+  tags: timezone
+  when: env_name | default('') != 'molecule'
+
+# - NTP
+- name: Update apt cache (Debian)
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  when: ansible_os_family == 'Debian'
+  tags: ntp
+
+- name: Install chrony
+  ansible.builtin.package:
+    name: chrony
+    state: present
+  tags: ntp
+
+- name: Configure chrony
+  ansible.builtin.template:
+    src: chrony.conf.j2
+    dest: "{{ common_chrony_config_path }}"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart chrony
+  tags: ntp
+
+# - SSH Hardening
+- name: Harden SSH configuration
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: present
+  loop:
+    - {regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no'}
+    - {regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no'}
+    - {regexp: '^#?PubkeyAuthentication', line: 'PubkeyAuthentication yes'}
+  notify: restart sshd
+  tags: ssh_hardening
+  when: env_name | default('') != 'molecule'
+
+# - Firewall
+- name: Configure firewall (Rocky / RedHat)
+  when: ansible_os_family == 'RedHat'
+  tags: firewall
+  block:
+    - name: Ensure firewalld is installed
+      ansible.builtin.package:
+        name: firewalld
+        state: present
+
+    - name: Enable and start firewalld
+      ansible.builtin.service:
+        name: firewalld
+        state: started
+        enabled: true
+
+    - name: Allow SSH through firewalld
+      ansible.posix.firewalld:
+        service: ssh
+        permanent: true
+        state: enabled
+        immediate: true
+
+- name: Configure firewall (Ubuntu / Debian)
+  when:
+    - ansible_os_family == 'Debian'
+    - env_name | default('') != 'molecule'
+  tags: firewall
+  block:
+    - name: Install ufw
+      ansible.builtin.package:
+        name: ufw
+        state: present
+    - name: Allow SSH through ufw
+      community.general.ufw:
+        rule: allow
+        port: ssh
+        proto: tcp
+    - name: Enable ufw
+      community.general.ufw:
+        state: enabled
+        policy: deny
+
+# - Common Packages
+- name: Install common packages
+  ansible.builtin.package:
+    name: "{{ common_packages }}"
+    state: present
+  tags: packages
+  when: env_name | default('') != 'molecule'
+
+# - MOTD
+- name: Configure MOTD
+  ansible.builtin.template:
+    src: motd.j2
+    dest: /etc/motd
+    owner: root
+    group: root
+    mode: '0644'
+  tags: motd

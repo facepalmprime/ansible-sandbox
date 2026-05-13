@@ -1,0 +1,4 @@
+---
+common_sshd_service_name: ssh
+common_chrony_service_name: chrony
+common_chrony_config_path: /etc/chrony/chrony.conf

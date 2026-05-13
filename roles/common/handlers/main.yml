@@ -1,2 +1,13 @@
 ---
-# handlers file for roles/common
+- name: Restart sshd
+  ansible.builtin.service:
+    name: "{{ common_sshd_service_name }}"
+    state: restarted
+  listen: restart sshd
+
+- name: Restart chrony
+  ansible.builtin.service:
+    name: "{{ common_chrony_service_name }}"
+    state: restarted
+  listen: restart chrony
+  failed_when: false

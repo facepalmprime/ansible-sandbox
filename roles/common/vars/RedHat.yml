@@ -1,0 +1,4 @@
+---
+common_sshd_service_name: sshd
+common_chrony_service_name: chronyd
+common_chrony_config_path: /etc/chrony.conf
