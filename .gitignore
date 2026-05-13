@@ -23,3 +23,5 @@ __pycache__/
 environments/*/host_vars/*.yml
 # But do commit the example files
 !environments/*/host_vars/*.yml.example
+# Internal planning docs — never commit
+docs/
