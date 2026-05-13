@@ -1,0 +1,93 @@
+---
+- name: Assert common role end-state
+  hosts: all
+  gather_facts: true
+  become: true
+
+  tasks:
+    - name: Gather service facts
+      ansible.builtin.service_facts:
+
+    - name: Assert hostname matches inventory_name
+      ansible.builtin.assert:
+        that: ansible_hostname == inventory_hostname
+        fail_msg: "hostname is {{ ansible_hostname }}, expected {{ inventory_hostname }}"
+      tags: hostname
+
+    - name: Check PermitRootLogin is disabled
+      ansible.builtin.command:
+        cmd: grep "^PermitRootLogin no" /etc/ssh/sshd_config
+      changed_when: false
+      tags: ssh_hardening
+
+    - name: Check PasswordAuthentication is disabled
+      ansible.builtin.command:
+        cmd: grep "^PasswordAuthentication no" /etc/ssh/sshd_config
+      changed_when: false
+      tags: ssh_hardening
+
+    - name: Assert chrony service is running
+      ansible.builtin.assert:
+        that: ansible_facts.services['chronyd.service']['state'] == 'running'
+        fail_msg: "chrony is not running"
+      when: ansible_os_family == 'RedHat'
+      tags: ntp
+
+    - name: Assert chrony service is running (Ubuntu)
+      ansible.builtin.assert:
+        that: ansible_facts.services['chrony.service']['state'] == 'running'
+        fail_msg: "chrony is not running"
+      when: ansible_os_family == 'Debian'
+      tags: ntp
+
+    - name: Assert firewalld is running (Rocky)
+      ansible.builtin.assert:
+        that: ansible_facts.services['firewalld.service']['state'] == 'running'
+        fail_msg: "firewalld is not running"
+      when: ansible_os_family == 'RedHat'
+      tags: firewall
+
+    - name: Check ufw is active (Ubuntu)
+      ansible.builtin.command:
+        cmd: ufw status
+      register: ufw_status
+      changed_when: false
+      when: ansible_os_family == 'Debian'
+      tags: firewall
+
+    - name: Assert ufw is enabled (Ubuntu)
+      ansible.builtin.assert:
+        that: "'Status: active' in ufw_status.stdout"
+        fail_msg: "ufw is not active"
+      when: ansible_os_family == 'Debian'
+      tags: firewall
+
+    - name: Check chrony is syncing (Rocky)
+      ansible.builtin.command:
+        cmd: chronyc tracking
+      changed_when: false
+      register: chrony_tracking
+      when: ansible_os_family == 'RedHat'
+      tags: ntp
+
+    - name: Assert chrony has reference source (Rocky)
+      ansible.builtin.assert:
+        that: "'Reference ID' in chrony_tracking.stdout and '0.0.0.0' not in chrony_tracking.stdout"
+        fail_msg: "chrony is running but not syncing to NTP"
+      when: ansible_os_family == 'RedHat'
+      tags: ntp
+
+    - name: Check chrony is syncing (Ubuntu)
+      ansible.builtin.command:
+        cmd: chronyc tracking
+      changed_when: false
+      register: chrony_tracking_ubuntu
+      when: ansible_os_family == 'Debian'
+      tags: ntp
+
+    - name: Assert chrony has a reference source (Ubuntu)
+      ansible.builtin.assert:
+        that: "'Reference ID' in chrony_tracking_ubuntu.stdout and '0.0.0.0' not in chrony_tracking_ubuntu.stdout"
+        fail_msg: "chrony is running but not syncing to any NTP source"
+      when: ansible_os_family == 'Debian'
+      tags: ntp
