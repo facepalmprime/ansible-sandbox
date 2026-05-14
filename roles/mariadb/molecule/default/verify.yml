@@ -1,0 +1,50 @@
+---
+- name: Verify mariadb role
+  hosts: all
+  gather_facts: false
+  become: true
+
+  tasks:
+    - name: Gather package facts
+      ansible.builtin.package_facts:
+        manager: auto
+
+    - name: Assert mariadb-server is installed
+      ansible.builtin.assert:
+        that: "'mariadb-server' in ansible_facts.packages"
+        fail_msg: "mariadb-server is not installed"
+
+    - name: Gather service facts
+      ansible.builtin.service_facts:
+
+    - name: Assert mariadb service is active
+      ansible.builtin.assert:
+        that: "ansible_facts.services['mariadb.service'].state == 'running'"
+        fail_msg: "mariadb service is not running"
+
+    - name: Assert mariadb service is enabled
+      ansible.builtin.assert:
+        that: "ansible_facts.services['mariadb.service'].status == 'enabled'"
+        fail_msg: "mariadb service is not enabled"
+
+    - name: Check gitea database exists
+      ansible.builtin.command:
+        cmd: mysql -u root -e "SHOW DATABASES LIKE 'gitea';"
+      register: db_check
+      changed_when: false
+
+    - name: Assert gitea database exists
+      ansible.builtin.assert:
+        that: "'gitea' in db_check.stdout"
+        fail_msg: "gitea database not found in MariaDB"
+
+    - name: Check gitea database user exists
+      ansible.builtin.command:
+        cmd: mysql -u root -e "SELECT User FROM mysql.user WHERE User='gitea';"
+      register: user_check
+      changed_when: false
+
+    - name: Assert gitea user exists
+      ansible.builtin.assert:
+        that: "'gitea' in user_check.stdout"
+        fail_msg: "gitea MariaDB user not found"
