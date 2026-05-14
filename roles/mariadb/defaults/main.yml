@@ -1,0 +1,4 @@
+---
+mariadb_gitea_db: gitea
+mariadb_gitea_user: gitea
+mariadb_gitea_password: "{{ vault_gitea_db_password }}"

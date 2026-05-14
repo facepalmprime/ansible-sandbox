@@ -1,0 +1,29 @@
+---
+- name: Install MariaDB server and Python connector
+  ansible.builtin.dnf:
+    name:
+      - mariadb-server
+      - python3-PyMySQL
+    state: present
+
+- name: Start and enable MariaDB
+  ansible.builtin.service:
+    name: mariadb
+    state: started
+    enabled: true
+
+- name: Create Gitea database
+  community.mysql.mysql_db:
+    name: "{{ mariadb_gitea_db }}"
+    state: present
+    encoding: utf8mb4
+    collation: utf8mb4_unicode_ci
+    login_unix_socket: /var/lib/mysql/mysql.sock
+
+- name: Create Gitea database user
+  community.mysql.mysql_user:
+    name: "{{ mariadb_gitea_user }}"
+    password: "{{ mariadb_gitea_password }}"
+    priv: "{{ mariadb_gitea_db }}.*:ALL"
+    state: present
+    login_unix_socket: /var/lib/mysql/mysql.sock
