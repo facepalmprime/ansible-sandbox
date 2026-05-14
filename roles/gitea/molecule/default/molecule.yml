@@ -1,0 +1,23 @@
+---
+dependency:
+  name: galaxy
+driver:
+  name: podman
+platforms:
+  - name: rocky8-gitea-test
+    image: docker.io/geerlingguy/docker-rockylinux8-ansible:latest
+    pre_build_image: true
+    privileged: true
+    command: /usr/sbin/init
+provisioner:
+  name: ansible
+  inventory:
+    group_vars:
+      all:
+        ansible_python_interpreter: /usr/bin/python3
+        env_name: molecule
+        vault_gitea_db_password: "molecule_test_db_pass"
+        vault_gitea_secret_key: "molecule_test_secret_key_use_32_chars_minimum_here"
+        vault_mariadb_root_password: "molecule_test_root_pass"
+verifier:
+  name: ansible

@@ -1,0 +1,78 @@
+---
+- name: Verify gitea role
+  hosts: all
+  gather_facts: true
+  become: true
+
+  tasks:
+    - name: Check gitea OS user exists
+      ansible.builtin.command:
+        cmd: id gitea
+      register: user_check
+      changed_when: false
+      failed_when: user_check.rc != 0
+
+    - name: Check gitea user has no login shell
+      ansible.builtin.command:
+        cmd: getent passwd gitea
+      register: passwd_entry
+      changed_when: false
+
+    - name: Assert gitea user shell is nologin
+      ansible.builtin.assert:
+        that: "'/nologin' in passwd_entry.stdout or '/false' in passwd_entry.stdout"
+        fail_msg: "gitea user has a login shell - expected /sbin/nologin"
+
+    - name: Check gitea binary exists
+      ansible.builtin.stat:
+        path: /usr/local/bin/gitea
+      register: binary_stat
+
+    - name: Assert gitea binary is executable
+      ansible.builtin.assert:
+        that:
+          - binary_stat.stat.exists
+          - binary_stat.stat.executable
+        fail_msg: "/usr/local/bin/gitea missing or not executable"
+
+    - name: Check gitea data directory owner is gitea
+      ansible.builtin.stat:
+        path: /var/lib/gitea
+      register: data_dir
+
+    - name: Assert data directory owner is gitea
+      ansible.builtin.assert:
+        that:
+          - data_dir.stat.exists
+          - data_dir.stat.pw_name == "gitea"
+        fail_msg: "/var/lib/gitea missing or not owned by gitea"
+
+    - name: Check gitea config file exists
+      ansible.builtin.stat:
+        path: /etc/gitea/app.ini
+      register: config_file
+
+    - name: Assert config file exists
+      ansible.builtin.assert:
+        that: config_file.stat.exists
+        fail_msg: "/etc/gitea/app.ini missing"
+
+    - name: Gather service facts
+      ansible.builtin.service_facts:
+
+    - name: Assert gitea service is active
+      ansible.builtin.assert:
+        that: "ansible_facts.services['gitea.service'].state == 'running'"
+        fail_msg: "gitea service is not running"
+
+    - name: Assert gitea service is enabled
+      ansible.builtin.assert:
+        that: "ansible_facts.services['gitea.service'].status == 'enabled'"
+        fail_msg: "gitea service is not enabled"
+
+    - name: Check port 3000 is listening
+      ansible.builtin.wait_for:
+        port: 3000
+        host: 127.0.0.1
+        timeout: 15
+        state: started

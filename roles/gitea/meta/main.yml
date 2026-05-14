@@ -1,0 +1,10 @@
+---
+galaxy_info:
+  role_name: gitea
+  author: mrplatinum
+  description: Deploys Gitea self-hosted git server with MariaDB backend
+  license: MIT
+  min_ansible_version: "2.14"
+
+dependencies:
+  - role: mariadb
