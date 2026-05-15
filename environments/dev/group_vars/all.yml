@@ -1,3 +1,0 @@
----
-# Variables applied to every host in the dev environment
-env_name: dev

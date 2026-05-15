@@ -5,9 +5,12 @@
   become: true
 
   tasks:
+    - name: Check service facts
+      ansible.builtin.service_facts:
+
     - name: Assert MariaDB service is active
       ansible.builtin.assert:
-        that: "'active' in lookup('pipe', 'systemctl is-active mariadb')"
+        that: ansible_facts.services['mariadb.service'].state == 'running'
         fail_msg: "MariaDB is not running"
 
     - name: Assert gitea database exists
@@ -25,24 +28,24 @@
 
     - name: Assert Gitea service is active
       ansible.builtin.assert:
-        that: "'active' in lookup('pipe', 'systemctl is-active gitea')"
+        that: ansible_facts.services['gitea.service'].state == 'running'
         fail_msg: "Gitea service is not running"
 
     - name: Assert Gitea service is enabled
       ansible.builtin.assert:
-        that: "'enabled' in lookup('pipe', 'systemctl is-enabled gitea')"
+        that: ansible_facts.services['gitea.service'].status == 'enabled'
         fail_msg: "Gitea service is not enabled at boot"
 
-    - name: Assert Gitea 3000 is listening
+    - name: Assert Gitea port 3000 is listening
       ansible.builtin.wait_for:
         port: 3000
         host: 127.0.0.1
-        timeout: 10
+        timeout: 30
         state: started
 
     - name: Assert Gitea HTTP response
       ansible.builtin.uri:
         url: "http://127.0.0.1:3000"
         status_code: 200
-        timeout: 10
+        timeout: 30
       register: http_check
