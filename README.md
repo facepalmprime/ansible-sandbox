@@ -50,6 +50,18 @@ understood what I was actually automating:
 - Killed node2's wifi mid-run on purpose to see what happened. Partial completion,
   clean re-run when it came back. That's what idempotency is actually for.
 
+### Phase 3 — Gitea (self-hosted Git server)
+
+Gitea runs on node1, backed by MariaDB. The interesting part was the role
+dependency — `meta/main.yml` declares mariadb as a dependency of gitea, so there's
+no playbook-level ordering to manage. Apply the gitea role, MariaDB comes with it.
+
+Wrote verify.yml for both roles before writing a single task. Ran molecule, confirmed
+it failed, then made it pass. Both roles hit zero changed on second run before anything
+touched a real node. Deployed to dev first, idempotency confirmed, then the same
+playbook ran against prod with different vault secrets. That's the whole point of
+environment-aware structure — the role doesn't know or care which environment it's in.
+
 ## Problems I Hit and How I Diagnosed Them
 
 This section exists because debugging is the actual job. These are real failures from
@@ -123,6 +135,45 @@ containers and full OS installs.
 
 ---
 
+**community.general 12.x requires Python 3.7+ — Rocky 8 ships Python 3.6**
+
+The `ansible.posix.sefcontext` and `community.general.seport` modules failed on
+node3 and node4 with `SyntaxError: future feature annotations is not defined`. These
+modules use Python 3.7 syntax (`from __future__ import annotations`) but the Rocky 8
+VMs run Python 3.6 by default.
+
+Diagnosed via: the traceback pointed directly to line 7 of the module file — a syntax
+the interpreter couldn't parse, not a logic error.
+
+Fix: replaced both modules with `ansible.builtin.command` tasks calling `semanage`
+directly. Same outcome, no Python version dependency. The `changed_when` condition
+checks for "already defined" in stdout (not stderr — semanage returns rc=0 with the
+message in stdout when the entry already exists).
+
+---
+
+**Gitea rewrites app.ini after startup — breaks idempotency**
+
+The template deployed correctly on first run. Second run showed `changed` on
+`Deploy Gitea app.ini config` every time, triggering a restart handler on every
+subsequent run.
+
+Root cause: Gitea generates `INTERNAL_TOKEN` and `JWT_SECRET` on first boot and
+writes them into `app.ini`. Our template didn't include these. Every subsequent run
+overwrote Gitea's additions with the original template, Gitea re-added them on
+restart, and the cycle repeated.
+
+Additional wrinkle: Gitea strips alignment spaces and normalises the file. Template
+had `DOMAIN    = node1` (aligned), file had `DOMAIN = node1` (single space). Same
+difference, same cycle.
+
+Fix: pre-populate all generated values in vault. Add them to the template so Gitea
+sees its own values already in place and has no reason to modify the file. The
+JWT_SECRET must be valid URL-safe base64 — a human-readable placeholder string will
+cause Gitea to regenerate it.
+
+---
+
 **Node2-Down Drill: understanding UNREACHABLE vs FAILED**
 
 Ran `common.yml` against the test environment with node2's wifi killed. Some tasks
@@ -157,11 +208,15 @@ ansible-sandbox/
 │   └── prod/       # node1 (Rocky 8.9 physical — real services)
 ├── roles/
 │   ├── bootstrap/  # service account creation (one-shot, Molecule verified)
-│   └── common/     # hardened baseline — all nodes, all environments
+│   ├── common/     # hardened baseline — all nodes, all environments
+│   ├── mariadb/    # MariaDB install + gitea DB/user — TDD, Molecule tested
+│   └── gitea/      # Gitea binary deploy, systemd, SELinux, firewalld, vault secrets
 ├── playbooks/
 │   ├── bootstrap.yml
 │   ├── common.yml
-│   └── assert_common.yml
+│   ├── assert_common.yml
+│   ├── deploy_gitea.yml
+│   └── assert_gitea.yml
 └── collections/
     └── requirements.yml
 ```
@@ -187,10 +242,9 @@ cd roles/common && molecule test
 
 The lab is still running. A few things on the roadmap:
 
-- **Self-hosted services** — replacing cloud tools I already use with versions I own
-  and run myself. DNS filtering, Git hosting, media — deployed and managed entirely by
-  Ansible using the same TDD pattern from Phase 1. If the playbook doesn't do it, it
-  doesn't happen.
+- **Self-hosted services** — Gitea is live. Next: DNS filtering (Pi-hole), media
+  server (Jellyfin), and file sync (Nextcloud) — all deployed via Ansible roles using
+  the same TDD pattern. If the playbook doesn't do it, it doesn't happen.
 - **CI/CD pipeline** — automating playbook runs on git push using a self-hosted
   Woodpecker CI instance. The goal is no manual `ansible-playbook` commands at all.
 - **Red Hat ecosystem depth** — this lab doubles as a practice environment for going
@@ -210,4 +264,4 @@ The lab is still running. A few things on the roadmap:
 ## Tech Stack
 
 Ansible · Rocky Linux 8.9 · Ubuntu 22.04 · KVM/libvirt · Molecule · Podman ·
-ansible-vault · ansible-lint · firewalld · ufw · SELinux · chrony · Python 3
+ansible-vault · ansible-lint · MariaDB · Gitea · firewalld · ufw · SELinux · chrony · Python 3
