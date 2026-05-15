@@ -54,7 +54,7 @@
     cmd: semanage fcontext -a -t bin_t "{{ gitea_binary }}"
   when: ansible_selinux.status == 'enabled'
   register: semanage_result
-  changed_when: "'already defined' not in semanage_result.stderr"
+  changed_when: "'already defined' not in semanage_result.stdout and 'already defined' not in semanage_result.stderr"
   failed_when: semanage_result.rc != 0 and 'already defined' not in semanage_result.stderr
   notify: Restore SELinux contexts
 
@@ -63,7 +63,7 @@
     cmd: semanage port -a -t http_port_t -p tcp {{ gitea_port }}
   when: ansible_selinux.status == 'enabled'
   register: seport_result
-  changed_when: "'already defined' not in seport_result.stderr"
+  changed_when: "'already defined' not in seport_result.stdout and 'already defined' not in seport_result.stderr"
   failed_when: seport_result.rc != 0 and 'already defined' not in seport_result.stderr
 
 - name: Open Gitea port in firewalld
@@ -80,7 +80,7 @@
     dest: "{{ gitea_config_dir }}/app.ini"
     owner: "{{ gitea_user }}"
     group: "{{ gitea_group }}"
-    mode: "0640"
+    mode: "0600"
   notify: Restart gitea
 
 - name: Deploy Gitea systemd unit file
