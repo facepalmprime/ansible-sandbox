@@ -1,0 +1,25 @@
+; Gitea configuration - managed by Ansible, do not edit manually
+
+[server]
+HTTP_PORT = {{ gitea_port }}
+DOMAIN    = {{ gitea_domain }}
+ROOT_URL  = http://{{ gitea_domain }}:{{ gitea_port }}/
+
+[database]
+DB_TYPE = mysql
+HOST    = 127.0.0.1:3306
+NAME    = {{ mariadb_gitea_db }}
+USER    = {{ mariadb_gitea_user }}
+PASSWD  = {{ vault_gitea_db_password }}
+
+[repository]
+ROOT = {{ gitea_home }}/repos
+
+[log]
+ROOT_PATH = {{ gitea_home }}/log
+MODE      = file
+LEVEL     = Info
+
+[security]
+SECRET_KEY    = {{ vault_gitea_secret_key }}
+INSTALL_LOCK  = true

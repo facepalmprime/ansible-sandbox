@@ -1,2 +1,9 @@
 ---
-# defaults file for gitea
+gitea_version: "1.22.3"
+gitea_port: 3000
+gitea_user: gitea
+gitea_group: gitea
+gitea_home: /var/lib/gitea
+gitea_config_dir: /etc/gitea
+gitea_binary: /usr/local/bin/gitea
+gitea_domain: "{{ ansible_hostname }}"
