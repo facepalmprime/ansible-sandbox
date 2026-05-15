@@ -1,5 +1,7 @@
 ; Gitea configuration - managed by Ansible, do not edit manually
 
+WORK_PATH = {{ gitea_home }}
+
 [server]
 HTTP_PORT = {{ gitea_port }}
 DOMAIN    = {{ gitea_domain }}
@@ -21,5 +23,9 @@ MODE      = file
 LEVEL     = Info
 
 [security]
-SECRET_KEY    = {{ vault_gitea_secret_key }}
-INSTALL_LOCK  = true
+SECRET_KEY     = {{ vault_gitea_secret_key }}
+INSTALL_LOCK   = true
+INTERNAL_TOKEN = {{ vault_gitea_internal_token }}
+
+[oauth2]
+JWT_SECRET   = {{ vault_gitea_jwt_secret }}
