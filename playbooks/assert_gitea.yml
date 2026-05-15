@@ -1,0 +1,48 @@
+---
+- name: Assert Gitea deployment state
+  hosts: rocky
+  gather_facts: true
+  become: true
+
+  tasks:
+    - name: Assert MariaDB service is active
+      ansible.builtin.assert:
+        that: "'active' in lookup('pipe', 'systemctl is-active mariadb')"
+        fail_msg: "MariaDB is not running"
+
+    - name: Assert gitea database exists
+      ansible.builtin.command:
+        cmd: mysql -u root -e "SHOW DATABASES LIKE 'gitea';"
+      register: db_check
+      changed_when: false
+      failed_when: "'gitea' not in db_check.stdout"
+
+    - name: Assert Gitea binary is present and executable
+      ansible.builtin.stat:
+        path: /usr/local/bin/gitea
+      register: binary_stat
+      failed_when: not binary_stat.stat.exists or not binary_stat.stat.executable
+
+    - name: Assert Gitea service is active
+      ansible.builtin.assert:
+        that: "'active' in lookup('pipe', 'systemctl is-active gitea')"
+        fail_msg: "Gitea service is not running"
+
+    - name: Assert Gitea service is enabled
+      ansible.builtin.assert:
+        that: "'enabled' in lookup('pipe', 'systemctl is-enabled gitea')"
+        fail_msg: "Gitea service is not enabled at boot"
+
+    - name: Assert Gitea 3000 is listening
+      ansible.builtin.wait_for:
+        port: 3000
+        host: 127.0.0.1
+        timeout: 10
+        state: started
+
+    - name: Assert Gitea HTTP response
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:3000"
+        status_code: 200
+        timeout: 10
+      register: http_check

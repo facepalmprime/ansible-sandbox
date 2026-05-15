@@ -1,0 +1,7 @@
+---
+- name: Deploy Gitea stack (MariaDB + Gitea)
+  hosts: rocky
+  gather_facts: true
+
+  roles:
+    - role: gitea
