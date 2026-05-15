@@ -1,2 +1,100 @@
 ---
-# tasks file for gitea
+- name: Install policycoreutils-python-utils for SELinux management
+  ansible.builtin.dnf:
+    name: policycoreutils-python-utils
+    state: present
+  when: ansible_os_family == 'RedHat'
+
+- name: Install git (required by Gitea)
+  ansible.builtin.dnf:
+    name: git
+    state: present
+
+- name: Create gitea group
+  ansible.builtin.group:
+    name: "{{ gitea_group }}"
+    system: true
+    state: present
+
+- name: Create gitea system user
+  ansible.builtin.user:
+    name: "{{ gitea_user }}"
+    group: "{{ gitea_group }}"
+    home: "{{ gitea_home }}"
+    shell: /sbin/nologin
+    system: true
+    comment: Gitea git service
+    state: present
+
+- name: Create Gitea directory structure
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ gitea_user }}"
+    group: "{{ gitea_group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ gitea_home }}", mode: "0750" }
+    - { path: "{{ gitea_home }}/data", mode: "0750" }
+    - { path: "{{ gitea_home }}/log", mode: "0750" }
+    - { path: "{{ gitea_home }}/repos", mode: "0750" }
+    - { path: "{{ gitea_config_dir }}", mode: "0750" }
+
+- name: Download Gitea binary
+  ansible.builtin.get_url:
+    url: "https://dl.gitea.com/gitea/{{ gitea_version }}/gitea-{{ gitea_version }}-linux-amd64"
+    dest: "{{ gitea_binary }}"
+    mode: "0755"
+    owner: root
+    group: root
+  notify: Restart gitea
+
+- name: Set SELinux file context on Gitea binary
+  community.general.sefcontext:
+    target: "{{ gitea_binary }}"
+    setype: bin_t
+    state: present
+  when: ansible_selinux.status == 'enabled'
+  notify: Restore SELinux contexts
+
+- name: Allow Gitea port in SELinux
+  community.general.seport:
+    ports: "{{ gitea_port }}"
+    proto: tcp
+    setype: http_port_t
+    state: present
+  when: ansible_selinux.status == 'enabled'
+
+- name: Open Gitea port in firewalld
+  ansible.posix.firewalld:
+    port: "{{ gitea_port }}/tcp"
+    permanent: true
+    state: enabled
+    immediate: true
+  when: ansible_os_family == 'RedHat' and env_name != 'molecule'
+
+- name: Deploy Gitea app.ini config
+  ansible.builtin.template:
+    src: app.ini.j2
+    dest: "{{ gitea_config_dir }}/app.ini"
+    owner: "{{ gitea_user }}"
+    group: "{{ gitea_group }}"
+    mode: "0640"
+  notify: Restart gitea
+
+- name: Deploy Gitea systemd unit file
+  ansible.builtin.template:
+    src: gitea.service.j2
+    dest: /etc/systemd/system/gitea.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart gitea
+
+- name: Start and enable Gitea service
+  ansible.builtin.service:
+    name: gitea
+    state: started
+    enabled: true

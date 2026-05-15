@@ -19,5 +19,7 @@ provisioner:
         vault_gitea_db_password: "molecule_test_db_pass"
         vault_gitea_secret_key: "molecule_test_secret_key_use_32_chars_minimum_here"
         vault_mariadb_root_password: "molecule_test_root_pass"
+        vault_gitea_internal_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYmYiOjE3Nzg4MTY0NjN9.HXrq4zG_IB3l063cH2Xvp451P41J28-cYYk5DEaodns"
+        vault_gitea_jwt_secret: "_5SYz_LyfOcLfjmEvvvKY0beva9_RsRqEodCJGDpBqY"
 verifier:
   name: ansible

@@ -1,2 +1,14 @@
 ---
-# handlers file for gitea
+- name: Restart gitea
+  ansible.builtin.service:
+    name: gitea
+    state: restarted
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restore SELinux contexts
+  ansible.builtin.command:
+    cmd: restorecon -Rv /usr/local/bin/gitea
+  changed_when: false
