@@ -1,0 +1,23 @@
+[Unit]
+Description=Woodpecker CI Agent
+After=network.target woodpecker-server.service
+
+[Service]
+Type=simple
+User={{ woodpecker_user }}
+Group={{ woodpecker_group }}
+WorkingDirectory={{ woodpecker_home }}
+EnvironmentFile={{ woodpecker_config_dir }}/agent.env
+ExecStart={{ woodpecker_agent_binary }} agent
+Restart=always
+RestartSec=2s
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ReadWritePaths={{ woodpecker_home }} {{ woodpecker_config_dir }}
+CapabilityBoundingSet=
+ProtectHome=yes
+PrivateDevices=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,23 @@
+[Unit]
+Description=Woodpecker CI Server
+After=network.target gitea.service
+
+[Service]
+Type=simple
+User={{ woodpecker_user }}
+Group={{ woodpecker_group }}
+WorkingDirectory={{ woodpecker_home }}
+EnvironmentFile={{ woodpecker_config_dir }}/server.env
+ExecStart={{ woodpecker_server_binary }} server
+Restart=always
+RestartSec=2s
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ReadWritePaths={{ woodpecker_home }} {{ woodpecker_config_dir }}
+CapabilityBoundingSet=
+ProtectHome=yes
+PrivateDevices=yes
+
+[Install]
+WantedBy=multi-user.target
