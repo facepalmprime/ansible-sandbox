@@ -1,0 +1,13 @@
+---
+- name: Prepare Woodpecker molecule container
+  hosts: all
+  gather_facts: false
+  become: true
+
+  tasks:
+    - name: Install required packages
+      ansible.builtin.dnf:
+        name:
+          - policycoreutils-python-utils
+          - firewalld
+        state: present

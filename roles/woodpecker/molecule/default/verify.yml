@@ -1,0 +1,114 @@
+---
+- name: Verify woodpecker role
+  hosts: all
+  gather_facts: false
+  become: true
+
+  tasks:
+    - name: Check woodpecker user exists
+      ansible.builtin.command:
+        cmd: id woodpecker
+      register: user_check
+      changed_when: false
+      failed_when: user_check.rc != 0
+
+    - name: Check woodpecker user has no login shell
+      ansible.builtin.command:
+        cmd: getent passwd woodpecker
+      register: passwd_entry
+      changed_when: false
+
+    - name: Assert woodpecker user shell is nologin
+      ansible.builtin.assert:
+        that: "'/nologin' in passwd_entry.stdout or '/false' in passwd_entry.stdout"
+        fail_msg: "woodpecker user has a login shell - expected /sbin/nologin"
+
+    - name: Check woodpecker-server binary exists
+      ansible.builtin.stat:
+        path: /usr/local/bin/woodpecker-server
+      register: server_binary
+
+    - name: Assert woodpecker-server binary is executable
+      ansible.builtin.assert:
+        that:
+          - server_binary.stat.exists
+          - server_binary.stat.executable
+        fail_msg: "/usr/local/bin/woodpecker-server missing or not executable"
+
+    - name: Check woodpecker-agent binary exists
+      ansible.builtin.stat:
+        path: /usr/local/bin/woodpecker-agent
+      register: agent_binary
+
+    - name: Assert woodpecker-agent binary is executable
+      ansible.builtin.assert:
+        that:
+          - agent_binary.stat.exists
+          - agent_binary.stat.executable
+        fail_msg: "/usr/local/bin/woodpecker-agent missing or not executable"
+
+    - name: Check woodpecker data directory exists
+      ansible.builtin.stat:
+        path: /var/lib/woodpecker
+      register: data_dir
+
+    - name: Assert data directory owned by woodpecker
+      ansible.builtin.assert:
+        that:
+          - data_dir.stat.exists
+          - data_dir.stat.pw_name == 'woodpecker'
+        fail_msg: "/var/lib/woodpecker missing or not owned by woodpecker"
+
+    - name: Check server environment file exists
+      ansible.builtin.stat:
+        path: /etc/woodpecker/server.env
+      register: server_env
+
+    - name: Assert server environment file exists and is mode 0600
+      ansible.builtin.assert:
+        that:
+          - server_env.stat.exists
+          - server_env.stat.mode == '0600'
+        fail_msg: "/etc/woodpecker/server.env missing or not mode 0600 - secrets exposed"
+
+    - name: Check agent environment file exists
+      ansible.builtin.stat:
+        path: /etc/woodpecker/agent.env
+      register: agent_env
+
+    - name: Assert agent environment file exists ans is mode 0600
+      ansible.builtin.assert:
+        that:
+          - agent_env.stat.exists
+          - agent_env.stat.mode == '0600'
+        fail_msg: "/etc/woodpecker/agent.env missing or not mode 0600 - secrets exposed"
+
+    - name: Check woodpecker-server systemd unit exists
+      ansible.builtin.stat:
+        path: /etc/systemd/system/woodpecker-server.service
+      register: server_unit
+
+    - name: Assert woodpecker-server unit exists
+      ansible.builtin.assert:
+        that: server_unit.stat.exists
+        fail_msg: "/etc/systemd/system/woodpecker-server.service missing"
+
+    - name: Check woodpecker-agent systemd unit exists
+      ansible.builtin.stat:
+        path: /etc/systemd/system/woodpecker-agent.service
+      register: agent_unit
+
+    - name: Assert woodpecker-agent unit exists
+      ansible.builtin.assert:
+        that: agent_unit.stat.exists
+        fail_msg: "/etc/systemd/system/woodpecker-agent.service missing"
+
+    - name:  Check podman socket systemd drop-in directory exists
+      ansible.builtin.stat:
+        path: /etc/systemd/system/podman.socket.d
+      register: socket_dropin_dir
+
+    - name: Assert podman socket drop-in directory exists
+      ansible.builtin.assert:
+        that: socket_dropin_dir.stat.exists
+        fail_msg: "/etc/systemd/system/podman.socket.d missing - socket group override not deployed"
