@@ -25,3 +25,6 @@ environments/*/host_vars/*.yml
 !environments/*/host_vars/*.yml.example
 # Internal planning docs — never commit
 docs/
+
+# Friend Project — private, never commit
+environments/friend/

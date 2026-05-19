@@ -133,7 +133,10 @@
   when: ansible_selinux.status == 'enabled'
   register: semanage_server_result
   changed_when: "'already defined' not in semanage_server_result.stdout and 'already defined' not in semanage_server_result.stderr"
-  failed_when: semanage_server_result.rc != 0 and 'already defined' not in semanage_server_result.stdout and 'already defined' not in semanage_server_result.stderr
+  failed_when:
+    - semanage_server_result.rc != 0
+    - "'already defined' not in semanage_server_result.stdout"
+    - "'already defined' not in semanage_server_result.stderr"
   notify: Restore SELinux contexts
 
 - name: Set SELinux file context on Woodpecker agent binary
