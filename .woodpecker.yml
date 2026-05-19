@@ -7,4 +7,4 @@ steps:
   - name: lint
     image: node1:3000/mrplatinum/ansible-lint:6.22.2
     commands:
-      - ansible-lint
+      - ansible-lint -c /woodpecker/src/node1/mrplatinum/ansible-sandbox/ansible.cfg

@@ -1,2 +1,2 @@
 FROM python:3.11-alpine
-RUN pip install --no-cache-dir ansible-lint==6.22.2
+RUN pip install --no-cache-dir ansible-core ansible-lint==6.22.2
