@@ -1,0 +1,24 @@
+---
+- name: Restart woodpecker-server
+  ansible.builtin.service:
+    name: woodpecker-server
+    state: restarted
+
+- name: Restart woodpecker-agent
+  ansible.builtin.service:
+    name: woodpecker-agent
+    state: restarted
+
+- name: Restart podman socket
+  ansible.builtin.service:
+    name: podman.socket
+    state: restarted
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restore SELinux contexts
+  ansible.builtin.command:
+    cmd: restorecon -Rv /usr/local/bin/woodpecker-server /usr/local/bin/woodpecker-agent
+  changed_when: false

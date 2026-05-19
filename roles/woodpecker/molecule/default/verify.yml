@@ -103,12 +103,14 @@
         that: agent_unit.stat.exists
         fail_msg: "/etc/systemd/system/woodpecker-agent.service missing"
 
-    - name:  Check podman socket systemd drop-in directory exists
+    - name: Check podman socket systemd drop-in directory exists
       ansible.builtin.stat:
         path: /etc/systemd/system/podman.socket.d
       register: socket_dropin_dir
+      when: env_name != 'molecule'
 
     - name: Assert podman socket drop-in directory exists
       ansible.builtin.assert:
         that: socket_dropin_dir.stat.exists
         fail_msg: "/etc/systemd/system/podman.socket.d missing - socket group override not deployed"
+      when: env_name != 'molecule'

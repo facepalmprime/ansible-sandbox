@@ -1,0 +1,214 @@
+---
+- name: Install policycoreutils-python-utils and podman for SELinux and container backend
+  ansible.builtin.dnf:
+    name:
+      - policycoreutils-python-utils
+      - podman
+    state: present
+  when: ansible_os_family == 'RedHat'
+
+- name: Create podman group for socket access
+  ansible.builtin.group:
+    name: "{{ woodpecker_podman_group }}"
+    system: true
+    state: present
+
+- name: Create woodpecker group
+  ansible.builtin.group:
+    name: "{{ woodpecker_group }}"
+    system: true
+    state: present
+
+- name: Create woodpecker system user
+  ansible.builtin.user:
+    name: "{{ woodpecker_user }}"
+    group: "{{ woodpecker_group }}"
+    groups: ["{{ woodpecker_podman_group }}"]
+    append: true
+    home: "{{ woodpecker_home }}"
+    shell: /sbin/nologin
+    system: true
+    comment: Woodpecker CI
+    state: present
+
+- name: Create Woodpecker directory structure
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ woodpecker_user }}"
+    group: "{{ woodpecker_group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ woodpecker_home }}", mode: '0750' }
+    - { path: "{{ woodpecker_home }}/agent", mode: '0750' }
+    - { path: "{{ woodpecker_config_dir }}", mode: '0750' }
+
+- name: Create podman socket systemd drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/podman.socket.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: env_name != 'molecule'
+
+- name: Deploy podman socket group override
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/podman.socket.d/woodpecker.conf
+    content: |
+      [Socket]
+      SocketGroup={{ woodpecker_podman_group }}
+      SocketMode=0660
+    owner: root
+    group: root
+    mode: "0644"
+  when: env_name != 'molecule'
+  notify:
+    - Reload systemd
+    - Restart podman socket
+
+- name: Enable and start podman.socket
+  ansible.builtin.service:
+    name: podman.socket
+    state: started
+    enabled: true
+  when: env_name != 'molecule'
+
+- name: Configure Gitea as insecure container registry
+  ansible.builtin.copy:
+    dest: /etc/containers/registries.conf.d/gitea.conf
+    content: |
+      [[registry]]
+      location = "node1:3000"
+      insecure = true
+    owner: root
+    group: root
+    mode: "0644"
+  when: ansible_os_family == 'RedHat'
+
+- name: Ensure node1 hostname resolves locally for registry access
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    line: "192.168.254.19 node1"
+    state: present
+  when: ansible_os_family == 'RedHat' and env_name != 'molecule'
+
+- name: Download Woodpecker server tarball
+  ansible.builtin.get_url:
+    url: "https://github.com/woodpecker-ci/woodpecker/releases/download/v{{ woodpecker_version }}/woodpecker-server_linux_amd64.tar.gz"
+    dest: "/tmp/woodpecker-server_linux_amd64.tar.gz"
+    checksum: "{{ woodpecker_server_checksum }}"
+    mode: "0644"
+
+- name: Extract Woodpecker server binary
+  ansible.builtin.unarchive:
+    src: "/tmp/woodpecker-server_linux_amd64.tar.gz"
+    dest: /usr/local/bin/
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart woodpecker-server
+
+- name: Download Woodpecker agent tarball
+  ansible.builtin.get_url:
+    url: "https://github.com/woodpecker-ci/woodpecker/releases/download/v{{ woodpecker_version }}/woodpecker-agent_linux_amd64.tar.gz"
+    dest: "/tmp/woodpecker-agent_linux_amd64.tar.gz"
+    checksum: "{{ woodpecker_agent_checksum }}"
+    mode: "0644"
+
+- name: Extract woodpecker agent binary
+  ansible.builtin.unarchive:
+    src: "/tmp/woodpecker-agent_linux_amd64.tar.gz"
+    dest: /usr/local/bin/
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart woodpecker-agent
+
+- name: Set SELinux file context on Woodpecker server binary
+  ansible.builtin.command:
+    cmd: semanage fcontext -a -t bin_t "{{ woodpecker_server_binary }}"
+  when: ansible_selinux.status == 'enabled'
+  register: semanage_server_result
+  changed_when: "'already defined' not in semanage_server_result.stdout and 'already defined' not in semanage_server_result.stderr"
+  failed_when: semanage_server_result.rc != 0 and 'already defined' not in semanage_server_result.stdout and 'already defined' not in semanage_server_result.stderr
+  notify: Restore SELinux contexts
+
+- name: Set SELinux file context on Woodpecker agent binary
+  ansible.builtin.command:
+    cmd: semanage fcontext -a -t bin_t "{{ woodpecker_agent_binary }}"
+  when: ansible_selinux.status == 'enabled'
+  register: semanage_agent_result
+  changed_when: "'already defined' not in semanage_agent_result.stdout and 'already defined' not in semanage_agent_result.stderr"
+  failed_when: semanage_agent_result.rc != 0 and 'already defined' not in semanage_agent_result.stdout and 'already defined' not in semanage_agent_result.stderr
+  notify: Restore SELinux contexts
+
+- name: Allow Woodpecker server port on SELinux
+  ansible.builtin.command:
+    cmd: semanage port -a -t http_port_t -p tcp {{ woodpecker_server_port }}
+  when: ansible_selinux.status == 'enabled'
+  register: seport_result
+  changed_when: "'already defined' not in seport_result.stdout and 'already defined' not in seport_result.stderr"
+  failed_when: seport_result.rc != 0 and 'already defined' not in seport_result.stdout and 'already defined' not in seport_result.stderr
+
+- name: Open Woodpecker port in firewalld
+  ansible.posix.firewalld:
+    port: "{{ woodpecker_server_port }}/tcp"
+    permanent: true
+    state: enabled
+    immediate: true
+  when: ansible_os_family == 'RedHat' and env_name != 'molecule'
+
+- name: Deploy Woodpecker server environment file
+  ansible.builtin.template:
+    src: woodpecker-server.env.j2
+    dest: "{{ woodpecker_config_dir }}/server.env"
+    owner: "{{ woodpecker_user }}"
+    group: "{{ woodpecker_group }}"
+    mode: "0600"
+  notify: Restart woodpecker-server
+
+- name: Deploy Woodpecker agent environment file
+  ansible.builtin.template:
+    src: woodpecker-agent.env.j2
+    dest: "{{ woodpecker_config_dir }}/agent.env"
+    owner: "{{ woodpecker_user }}"
+    group: "{{ woodpecker_group }}"
+    mode: "0600"
+  notify: Restart woodpecker-agent
+
+- name: Deploy Woodpecker server systemd unit
+  ansible.builtin.template:
+    src: woodpecker-server.service.j2
+    dest: /etc/systemd/system/woodpecker-server.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart woodpecker-server
+
+- name: Deploy Woodpecker agent systemd unit
+  ansible.builtin.template:
+    src: woodpecker-agent.service.j2
+    dest: /etc/systemd/system/woodpecker-agent.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart woodpecker-agent
+
+- name: Start and enable Woodpecker server
+  ansible.builtin.service:
+    name: woodpecker-server
+    state: started
+    enabled: true
+
+- name: Start and enable Woodpecker agent
+  ansible.builtin.service:
+    name: woodpecker-agent
+    state: started
+    enabled: true
