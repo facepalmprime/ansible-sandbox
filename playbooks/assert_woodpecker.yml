@@ -1,0 +1,38 @@
+---
+- name: Assert Woodpecker CI deployment state
+  hosts: rocky
+  gather_facts: true
+  become: true
+
+  tasks:
+    - name: Gather service facts
+      ansible.builtin.service_facts:
+
+    - name: Assert Woodpecker server is active
+      ansible.builtin.assert:
+        that: ansible_facts.services['woodpecker-server.service'].state == 'running'
+        fail_msg: "Woodpecker server is not running"
+
+    - name: Assert Woodpecker server is enabled
+      ansible.builtin.assert:
+        that: ansible_facts.services['woodpecker-server.service'].status == 'enabled'
+        fail_msg: "Woodpecker server is not enabled at boot"
+
+    - name: Assert Woodpecker agent is active
+      ansible.builtin.assert:
+        that: ansible_facts.services['woodpecker-agent.service'].state == 'running'
+        fail_msg: "Woodpecker agent is not running"
+
+    - name: Assert Woodpecker port 8000 is listening
+      ansible.builtin.wait_for:
+        port: 8000
+        host: 127.0.0.1
+        timeout: 30
+        state: started
+
+    - name: Assert Woodpecker HTTP response
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:8000"
+        status_code: 200
+        timeout: 30
+      register: http_check

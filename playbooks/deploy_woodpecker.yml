@@ -1,0 +1,7 @@
+---
+- name: Deploy Woodpecker CI (server + agent)
+  hosts: rocky
+  gather_facts: true
+
+  roles:
+    - role: woodpecker
