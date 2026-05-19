@@ -9,5 +9,9 @@ steps:
     pull: true
     environment:
       ANSIBLE_CONFIG: /woodpecker/src/node1/mrplatinum/ansible-sandbox/ansible.cfg
+      VAULT_PASSWORD:
+        from_secret: vault_password
     commands:
+      - echo "$VAULT_PASSWORD" > secret.txt
       - ansible-lint
+      - rm -f secret.txt
