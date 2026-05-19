@@ -27,3 +27,6 @@ INTERNAL_TOKEN = {{ vault_gitea_internal_token }}
 
 [oauth2]
 JWT_SECRET = {{ vault_gitea_jwt_secret }}
+
+[webhook]
+ALLOWED_HOST_LIST = {{ ansible_default_ipv4.address }}
