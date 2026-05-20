@@ -27,7 +27,7 @@ drops it's a chance to practice handling partial failures gracefully.
 
 ## What's Built
 
-### Phase 0 — Lab Foundation
+### Building the Substrate
 
 Before Ansible touches anything, the substrate has to exist. I built it by hand so I
 understood what I was actually automating:
@@ -40,7 +40,7 @@ understood what I was actually automating:
 - `bootstrap` role: ansible service account, SSH key, passwordless sudo — Molecule
   tested before it ever ran on real hardware
 
-### Phase 1 — Base Configuration
+### Getting the Baseline Right
 
 - `common` role covers the baseline every node needs: hostname, NTP, SSH hardening,
   firewall, MOTD — same role runs on Rocky and Ubuntu using OS-family conditionals
@@ -50,7 +50,7 @@ understood what I was actually automating:
 - Killed node2's wifi mid-run on purpose to see what happened. Partial completion,
   clean re-run when it came back. That's what idempotency is actually for.
 
-### Phase 3 — Gitea (self-hosted Git server)
+### Gitea (self-hosted Git server)
 
 Gitea runs on node1, backed by MariaDB. The interesting part was the role
 dependency — `meta/main.yml` declares mariadb as a dependency of gitea, so there's
@@ -61,6 +61,42 @@ it failed, then made it pass. Both roles hit zero changed on second run before a
 touched a real node. Deployed to dev first, idempotency confirmed, then the same
 playbook ran against prod with different vault secrets. That's the whole point of
 environment-aware structure — the role doesn't know or care which environment it's in.
+
+### Woodpecker CI (self-hosted CI/CD)
+
+Every push to the Gitea repo now triggers ansible-lint automatically. No third-party
+CI service — Woodpecker runs on node1, watches the local Gitea instance via OAuth, and
+executes the pipeline. The whole pipeline definition is a `.woodpecker.yml` file in the
+repo root. Change the file, change what runs. That's pipeline as code.
+
+Pipeline steps run inside containers. Rather than installing ansible-lint at runtime on
+every run, I built a custom image with a pinned version and pushed it to Gitea's
+built-in container registry. The image tag is `ansible-lint:6.22.2` — that version is
+what this repo gets linted against until I deliberately change it. Pinning both
+ansible-lint and ansible-core in the Containerfile matters: unpinned, pip resolves to
+whatever is latest — and latest breaks things, as the debugging section covers.
+
+A few deliberate decisions worth noting:
+
+**Lint only, no auto-deploy.** The pipeline runs ansible-lint and stops. It doesn't
+run `ansible-playbook` on push. That's intentional — gating lint and gating deployment
+are separate concerns. A commit that passes lint hasn't necessarily been reviewed for
+whether it should actually run against prod. Auto-deploy comes later, with more
+guardrails in place.
+
+**Separate OAuth apps for dev and prod.** Woodpecker on node3 (dev) and node1 (prod)
+each have their own Gitea OAuth application with separate client credentials. Sharing
+one set of credentials across environments means a leaked dev secret is also a leaked
+prod secret. The extra five minutes to create a second app is worth it.
+
+**Dedicated woodpecker service account, not the ansible account.** The agent runs as
+`woodpecker` — a system user with no login shell and no sudo. The ansible service
+account has broad sudo access across the infrastructure; giving the CI agent the same
+identity would mean a compromised pipeline has the keys to everything. Least privilege
+from the start.
+
+Getting the pipeline green took longer than expected. Four separate failures stacked on
+each other across two sessions. The debugging section has the full write-up.
 
 ## Problems I Hit and How I Diagnosed Them
 
@@ -186,6 +222,91 @@ problem. They look similar in output but require completely different diagnosis.
 Re-ran after node2 came back. Zero changes on all nodes that had already completed —
 idempotency confirmed even across a split run.
 
+---
+
+**Woodpecker agent couldn't reach the Podman socket on prod**
+
+Deployed Woodpecker to dev (node3) without issue. Same playbook ran against prod
+(node1) and the agent couldn't pull container images — permission denied on the Podman
+socket.
+
+Root cause: `/run/podman` was created at boot with mode `700` (root only) on node1.
+On node3 the directory happened to have looser permissions from a previous Podman
+invocation. The woodpecker user was in the `podman` group, but group permissions don't
+help if the directory itself blocks traversal.
+
+Fix: a `tmpfiles.d` drop-in that sets `/run/podman` to `0750 root podman` on every
+boot. `tmpfiles.d` is the right tool here — it runs before services start and persists
+across reboots, unlike a one-shot chmod that disappears on restart.
+
+Lesson: dev and prod nodes have history. A directory permission that happens to be
+correct on a VM you provisioned recently can be wrong on a physical server that's been
+running for months. Always test on prod-equivalent hardware.
+
+---
+
+**Woodpecker health check conflicting with Gitea on node1**
+
+After deploying to prod, the Woodpecker agent kept restarting. Gitea was still running
+fine. The agent log showed it was trying to bind a health check endpoint to `:3000` —
+the same port Gitea already owned.
+
+Root cause: Woodpecker 3.x changed the default health check address to `:3000`.
+On node3 (dev) there's no Gitea, so the port was free. On node1 (prod) Gitea holds it.
+
+Fix: set `WOODPECKER_HEALTHCHECK_ADDR=:3002` in the agent environment file. Port 3002
+is unused. The tradeoff is a non-default port that future-me will have to remember
+— documented in the template and in this section so it's findable.
+
+---
+
+**Gitea blocking webhook delivery to its own IP**
+
+Woodpecker was deployed and running. Pushed a commit — no pipeline triggered.
+The webhook showed as failed in Gitea's delivery log with a network error.
+
+Root cause: Gitea has a security feature that blocks webhook delivery to private IP
+ranges by default. This prevents server-side request forgery attacks. The problem:
+Woodpecker is running on the same machine as Gitea, so the webhook target is a private
+IP on the LAN — exactly what the protection blocks.
+
+Fix: add `ALLOWED_HOST_LIST = {{ ansible_default_ipv4.address }}` to Gitea's `app.ini`
+under `[webhook]`. This allowlists only node1's own IP — not the entire private range,
+just the one address that needs to receive webhooks. The variable substitution keeps
+the IP out of the repo; the actual value is resolved at playbook runtime.
+
+The tradeoff: we're explicitly loosening a security control. The justification is that
+we're only allowing the server's own address, not a wildcard, and this is a private LAN
+with no external access. On a public-facing server this decision would need more thought.
+
+---
+
+**CI pipeline: four failures stacked on each other**
+
+Getting ansible-lint to run cleanly in the Woodpecker container took four separate
+fixes. Each one exposed the next.
+
+*Layer 1 — stale image cache.* The pipeline pulled a cached image from before
+ansible-core was added to the Containerfile. Cleared the cache on node1 and added
+`pull: true` to the pipeline definition to prevent it recurring.
+
+*Layer 2 — unpinned ansible-core.* Even with the cache cleared, the fresh image failed
+with `ModuleNotFoundError: No module named 'ansible.parsing.yaml.constructor'`.
+ansible-lint 6.22.2 was released when ansible-core 2.16 was current. Unpinned install
+resolved to 2.18, which reorganised internal modules that ansible-lint expected at the
+old paths. Fix: pin `ansible-core==2.16.13` in the Containerfile.
+
+*Layer 3 — wrong flag.* The `-c` flag on ansible-lint sets its own config file, which
+must be YAML. I was pointing it at `ansible.cfg`, which is INI. Fix: use the
+`ANSIBLE_CONFIG` environment variable instead, which ansible-core respects regardless
+of directory permissions.
+
+*Layer 4 — vault password missing in CI.* The container had no vault password file, so
+ansible-lint's syntax-check couldn't decrypt vault variables. Fix: store the vault
+password in Woodpecker's secret store, inject it as an environment variable at runtime,
+write it to the expected path before lint runs, delete it after. The password never
+touches the repo or the logs.
+
 ## Engineering Practices
 
 | Practice | Why |
@@ -197,26 +318,34 @@ idempotency confirmed even across a split run.
 | Idempotency verified, not assumed | Every playbook runs twice — zero changes required on the second run |
 | Dedicated ansible service account | Automation never runs as a human user — the account rotates independently, audit logs show `ansible` not a person |
 | SELinux enforcing on all Rocky nodes | Contexts managed with `seboolean`/`sefcontext` — disabling SELinux to make something work is not a solution |
+| Pipeline as code | `.woodpecker.yml` lives in the repo — the pipeline is versioned, reviewed, and changes with the codebase |
+| Pinned CI tool versions | ansible-lint and ansible-core both pinned in the Containerfile — the lint environment is reproducible and can't drift |
 
 ## Project Structure
 
 ```
 ansible-sandbox/
+├── ci/
+│   └── Containerfile.ansible-lint  (pinned ansible-lint image for CI)
 ├── environments/
 │   ├── dev/        # node3, node4 (Rocky 8.9 VMs — disposable)
 │   ├── test/       # node2, node5 (Ubuntu 22.04 — intentionally unstable)
 │   └── prod/       # node1 (Rocky 8.9 physical — real services)
 ├── roles/
-│   ├── bootstrap/  # service account creation (one-shot, Molecule verified)
-│   ├── common/     # hardened baseline — all nodes, all environments
-│   ├── mariadb/    # MariaDB install + gitea DB/user — TDD, Molecule tested
-│   └── gitea/      # Gitea binary deploy, systemd, SELinux, firewalld, vault secrets
+│   ├── bootstrap/   # service account creation (one-shot, Molecule verified)
+│   ├── common/      # hardened baseline — all nodes, all environments
+│   ├── mariadb/     # MariaDB install + gitea DB/user — TDD, Molecule tested
+│   ├── gitea/       # Gitea binary deploy, systemd, SELinux, firewalld, vault secrets
+│   └── woodpecker/  # Woodpecker CI server + agent — binary deploy, systemd, podman backend
 ├── playbooks/
 │   ├── bootstrap.yml
 │   ├── common.yml
 │   ├── assert_common.yml
 │   ├── deploy_gitea.yml
-│   └── assert_gitea.yml
+│   ├── assert_gitea.yml
+│   ├── deploy_woodpecker.yml
+│   └── assert_woodpecker.yml
+├── .woodpecker.yml                  (pipeline definition — ansible-lint on push)
 └── collections/
     └── requirements.yml
 ```
@@ -242,11 +371,16 @@ cd roles/common && molecule test
 
 The lab is still running. A few things on the roadmap:
 
-- **Self-hosted services** — Gitea is live. Next: DNS filtering (Pi-hole), media
-  server (Jellyfin), and file sync (Nextcloud) — all deployed via Ansible roles using
-  the same TDD pattern. If the playbook doesn't do it, it doesn't happen.
-- **CI/CD pipeline** — automating playbook runs on git push using a self-hosted
-  Woodpecker CI instance. The goal is no manual `ansible-playbook` commands at all.
+- **Security hardening** — a full audit of everything built so far against NIST 800-53
+  and CIS benchmarks before any public-facing services go up. TLS throughout, binary
+  checksum verification, systemd sandboxing on every service unit, secret scanning in
+  the pre-commit hook. Tightening what's already built before adding more to it.
+- **Self-hosted services** — Pi-hole for DNS filtering, Jellyfin for media, Nextcloud
+  for file sync. All deployed via Ansible roles using the same TDD pattern. If the
+  playbook doesn't do it, it doesn't happen.
+- **Chaos engineering** — structured failure injection once the service layer is stable.
+  node2's wifi dropping is already built in; the next step is making the playbooks prove
+  they handle it rather than just observing that they do.
 - **Red Hat ecosystem depth** — this lab doubles as a practice environment for going
   further in the Red Hat certification track. Building toward that on real hardware
   instead of a sandboxed exam environment.
@@ -264,4 +398,4 @@ The lab is still running. A few things on the roadmap:
 ## Tech Stack
 
 Ansible · Rocky Linux 8.9 · Ubuntu 22.04 · KVM/libvirt · Molecule · Podman ·
-ansible-vault · ansible-lint · MariaDB · Gitea · firewalld · ufw · SELinux · chrony · Python 3
+ansible-vault · ansible-lint · MariaDB · Gitea · Woodpecker CI · firewalld · ufw · SELinux · chrony · Python 3
