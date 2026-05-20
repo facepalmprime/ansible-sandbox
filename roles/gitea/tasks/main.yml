@@ -39,7 +39,7 @@
     - { path: "{{ gitea_home }}/log", mode: "0750" }
     - { path: "{{ gitea_home }}/repos", mode: "0750" }
     - { path: "{{ gitea_config_dir }}", mode: "0750" }
-
+    - { path: "{{ gitea_home }}/certs", mode: "0750" }
 - name: Download Gitea binary
   ansible.builtin.get_url:
     url: "https://dl.gitea.com/gitea/{{ gitea_version }}/gitea-{{ gitea_version }}-linux-amd64"
@@ -99,3 +99,21 @@
     name: gitea
     state: started
     enabled: true
+
+- name: Copy node certificate for Gitea
+  ansible.builtin.copy:
+    src: "{{ gitea_ca_dir }}/{{ inventory_hostname }}.crt"
+    dest: "{{ gitea_cert_dir }}/{{ inventory_hostname }}.crt"
+    owner: "{{ gitea_user }}"
+    group: "{{ gitea_group }}"
+    mode: "0644"
+  notify: Restart gitea
+
+- name: Copy node private key for Gitea
+  ansible.builtin.copy:
+    src: "{{ gitea_ca_dir }}/{{ inventory_hostname }}.key"
+    dest: "{{ gitea_cert_dir }}/{{ inventory_hostname }}.key"
+    owner: "{{ gitea_user }}"
+    group: "{{ gitea_group }}"
+    mode: "0640"
+  notify: Restart gitea

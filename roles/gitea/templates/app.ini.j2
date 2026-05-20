@@ -2,8 +2,11 @@ WORK_PATH = {{ gitea_home }}
 
 [server]
 HTTP_PORT = {{ gitea_port }}
+PROTOCOL = https
 DOMAIN = {{ gitea_domain }}
-ROOT_URL = http://{{ gitea_domain }}:{{ gitea_port }}/
+ROOT_URL = https://{{ gitea_domain }}:{{ gitea_port }}/
+CERT_FILE = {{ gitea_cert_dir }}/{{ inventory_hostname }}.crt
+KEY_FILE = {{ gitea_cert_dir }}/{{ inventory_hostname }}.key
 
 [database]
 DB_TYPE = mysql

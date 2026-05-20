@@ -7,3 +7,5 @@ gitea_home: /var/lib/gitea
 gitea_config_dir: /etc/gitea
 gitea_binary: /usr/local/bin/gitea
 gitea_domain: "{{ ansible_hostname }}"
+gitea_cert_dir: "{{ gitea_home }}/certs"
+gitea_ca_dir: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca"
