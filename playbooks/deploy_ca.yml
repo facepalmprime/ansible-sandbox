@@ -1,0 +1,5 @@
+---
+- name: Deploy local CA and distribute node certificates
+  hosts: all
+  roles:
+    - role: ca

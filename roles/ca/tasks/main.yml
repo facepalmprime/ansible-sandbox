@@ -6,6 +6,7 @@
     state: directory
     mode: '0700'
   delegate_to: localhost
+  become: false
   run_once: true
 
 - name: Generate CA private key
@@ -14,6 +15,7 @@
     size: "{{ ca_key_size }}"
     state: present
   delegate_to: localhost
+  become: false
   run_once: true
 
 - name: Generate CA CSR
@@ -31,6 +33,7 @@
       - cRLSign
     key_usage_critical: true
   delegate_to: localhost
+  become: false
   run_once: true
 
 - name: Generate CA self-signed certificate
@@ -42,6 +45,7 @@
     selfsigned_not_after: "+{{ ca_validity_days }}d"
     state: present
   delegate_to: localhost
+  become: false
   run_once: true
 
 # - Node cert generation (runs on control node, per node)
@@ -51,6 +55,7 @@
     size: 2048
     state: present
   delegate_to: localhost
+  become: false
 
 - name: Generate node CSR
   community.crypto.openssl_csr:
@@ -66,6 +71,7 @@
       }}
     state: present
   delegate_to: localhost
+  become: false
 
 - name: Sign node cert with CA
   community.crypto.x509_certificate:
@@ -77,6 +83,7 @@
     ownca_not_after: "+{{ ca_node_cert_validity_days }}d"
     state: present
   delegate_to: localhost
+  become: false
 
 # - Distribute CA cert to managed nodes
 - name: Copy CA cert to trust anchors
