@@ -1,0 +1,35 @@
+---
+- name: Verify CA role
+  hosts: all
+  tasks:
+    - name: Check CA cert exists in trust anchors
+      ansible.builtin.stat:
+        path: /etc/pki/ca-trust/source/anchors/ansible-sandbox-ca.crt
+      register: ca_anchor
+
+    - name: Assert CA anchor exists
+      ansible.builtin.assert:
+        that: ca_anchor.stat.exists
+        fail_msg: "CA cert not found in trust anchors"
+
+    - name: Check node certificate exists
+      ansible.builtin.stat:
+        path: /etc/pki/tls/certs/{{ inventory_hostname }}.crt
+      register: node_cert
+
+    - name: Assert node cert exists
+      ansible.builtin.assert:
+        that: node_cert.stat.exists
+        fail_msg: "Node cert not found"
+
+    - name: Check node private key exists
+      ansible.builtin.stat:
+        path: /etc/pki/tls/private/{{ inventory_hostname }}.key
+      register: node_key
+
+    - name: Assert node key exists and has mode 0640
+      ansible.builtin.assert:
+        that:
+          - node_key.stat.exists
+          - node_key.stat.mode == "0640"
+        fail_msg: "Node key missing or wrong permissions"

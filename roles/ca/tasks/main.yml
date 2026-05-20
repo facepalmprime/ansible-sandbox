@@ -1,0 +1,108 @@
+---
+# - CA generation (runs on control node, once)
+- name: Create CA directory on control node
+  ansible.builtin.file:
+    path: "{{ ca_dir }}"
+    state: directory
+    mode: '0700'
+  delegate_to: localhost
+  run_once: true
+
+- name: Generate CA private key
+  community.crypto.openssl_privatekey:
+    path: "{{ ca_dir }}/ca.key"
+    size: "{{ ca_key_size }}"
+    state: present
+  delegate_to: localhost
+  run_once: true
+
+- name: Generate CA CSR
+  community.crypto.openssl_csr:
+    path: "{{ ca_dir }}/ca.csr"
+    privatekey_path: "{{ ca_dir }}/ca.key"
+    common_name: "{{ ca_common_name }}"
+    organization_name: "{{ ca_org }}"
+    country_name: "{{ ca_country }}"
+    basic_constraints:
+      - CA:TRUE
+    basic_constraints_critical: true
+    key_usage:
+      - keyCertSign
+      - cRLSign
+    key_usage_critical: true
+  delegate_to: localhost
+  run_once: true
+
+- name: Generate CA self-signed certificate
+  community.crypto.x509_certificate:
+    path: "{{ ca_dir }}/ca.crt"
+    csr_path: "{{ ca_dir }}/ca.csr"
+    privatekey_path: "{{ ca_dir }}/ca.key"
+    provider: selfsigned
+    selfsigned_not_after: "+{{ ca_validity_days }}d"
+    state: present
+  delegate_to: localhost
+  run_once: true
+
+# - Node cert generation (runs on control node, per node)
+- name: Generate node private key
+  community.crypto.openssl_privatekey:
+    path: "{{ ca_dir }}/{{ inventory_hostname }}.key"
+    size: 2048
+    state: present
+  delegate_to: localhost
+
+- name: Generate node CSR
+  community.crypto.openssl_csr:
+    path: "{{ ca_dir }}/{{ inventory_hostname }}.csr"
+    privatekey_path: "{{ ca_dir }}/{{ inventory_hostname }}.key"
+    common_name: "{{ ca_node_cert_cn }}"
+    subject_alt_name: >-
+      {{
+        ['DNS:' + inventory_hostname] +
+        (['IP:' + ansible_host]
+          if ansible_host | ansible.utils.ipaddr
+          else [])
+      }}
+    state: present
+  delegate_to: localhost
+
+- name: Sign node cert with CA
+  community.crypto.x509_certificate:
+    path: "{{ ca_dir }}/{{ inventory_hostname }}.crt"
+    csr_path: "{{ ca_dir }}/{{ inventory_hostname }}.csr"
+    ownca_path: "{{ ca_dir }}/ca.crt"
+    ownca_privatekey_path: "{{ ca_dir }}/ca.key"
+    provider: ownca
+    ownca_not_after: "+{{ ca_node_cert_validity_days }}d"
+    state: present
+  delegate_to: localhost
+
+# - Distribute CA cert to managed nodes
+- name: Copy CA cert to trust anchors
+  ansible.builtin.copy:
+    src: "{{ ca_dir }}/ca.crt"
+    dest: "{{ ca_trust_anchor_dir }}/ansible-sandbox-ca.crt"
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Update CA trust store (Rocky/RHEL)
+    - Update CA trust store (Ubuntu/Debian)
+
+# - Deploy node cert and key to management nodes
+- name: Copy node certificate to managed node
+  ansible.builtin.copy:
+    src: "{{ ca_dir }}/{{ inventory_hostname }}.crt"
+    dest: "{{ ca_node_cert_dir }}/{{ inventory_hostname }}.crt"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Copy node private key to managed node
+  ansible.builtin.copy:
+    src: "{{ ca_dir }}/{{ inventory_hostname }}.key"
+    dest: "{{ ca_node_key_dir }}/{{ inventory_hostname }}.key"
+    owner: root
+    group: root
+    mode: "0640"
