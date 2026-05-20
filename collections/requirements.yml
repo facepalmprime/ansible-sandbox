@@ -5,3 +5,5 @@ collections:
   - name: community.libvirt
   - name: ansible.utils
   - name: community.mysql
+  - name: community.crypto
+    version: "==2.16.1"
