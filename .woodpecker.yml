@@ -1,4 +1,10 @@
 ---
+clone:
+  git:
+    image: woodpeckerci/plugin-git
+    settings:
+      skip_verify: true
+
 when:
   branch: main
   event: push
