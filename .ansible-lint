@@ -9,3 +9,4 @@ exclude_paths:
 # Warn on experimental rules dont don't fail
 warn_list:
   - experimental
+  - fqcn[canonical]

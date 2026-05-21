@@ -1,5 +1,6 @@
 ---
 gitea_version: "1.22.3"
+gitea_checksum: "sha256:a720ff937912a6eb6c0cacf6ebcdd774deed5197cd945ecc34f5744cb5c517e8"
 gitea_port: 3000
 gitea_user: gitea
 gitea_group: gitea

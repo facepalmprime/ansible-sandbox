@@ -40,10 +40,12 @@
     - { path: "{{ gitea_home }}/repos", mode: "0750" }
     - { path: "{{ gitea_config_dir }}", mode: "0750" }
     - { path: "{{ gitea_home }}/certs", mode: "0750" }
+
 - name: Download Gitea binary
   ansible.builtin.get_url:
     url: "https://dl.gitea.com/gitea/{{ gitea_version }}/gitea-{{ gitea_version }}-linux-amd64"
     dest: "{{ gitea_binary }}"
+    checksum: "{{ gitea_checksum }}"
     mode: "0755"
     owner: root
     group: root
