@@ -1,2 +1,4 @@
 FROM python:3.11-alpine
 RUN pip install --no-cache-dir "ansible-core==2.16.13" "ansible-lint==6.22.2"
+COPY ansible-sandbox-ca.crt /usr/local/share/ca-certificates/ansible-sandbox-ca.crt
+RUN apk add --no-cache ca-certificates && update-ca-certificates
