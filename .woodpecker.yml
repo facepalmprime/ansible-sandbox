@@ -1,4 +1,10 @@
 ---
+clone:
+  git:
+    image: woodpeckerci/plugin-git
+    volumes:
+      - /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem:/etc/ssl/certs/ca-certificates.crt
+
 when:
   branch: main
   event: push
