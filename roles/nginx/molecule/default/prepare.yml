@@ -1,0 +1,12 @@
+---
+- name: Prepare
+  hosts: all
+  pre_tasks:
+    - name: Install SELinux and firewalld Python bindings
+      ansible.builtin.dnf:
+        name:
+          - python3-libselinux
+          - python3-firewall
+        state: present
+  roles:
+    - role: ca

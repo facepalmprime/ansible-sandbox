@@ -1,0 +1,5 @@
+---
+- name: Deploy nginx reverse proxy
+  hosts: all
+  roles:
+    - role: nginx

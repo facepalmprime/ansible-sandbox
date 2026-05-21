@@ -1,0 +1,6 @@
+---
+nginx_woodpecker_proxy_port: 8443
+nginx_woodpecker_backend_addr: "127.0.0.1"
+nginx_woodpecker_backend: "http://{{ nginx_woodpecker_backend_addr }}:8000"
+nginx_cert_dir: /etc/nginx/ssl
+nginx_ca_dir: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca"

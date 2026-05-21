@@ -1,0 +1,69 @@
+---
+- name: Install nginx
+  ansible.builtin.dnf:
+    name: nginx
+    state: present
+
+- name: Create nginx SSL directory
+  ansible.builtin.file:
+    path: "{{ nginx_cert_dir }}"
+    state: directory
+    owner: root
+    group: nginx
+    mode: "0750"
+
+- name: Copy node certificate for nginx
+  ansible.builtin.copy:
+    src: "{{ nginx_ca_dir }}/{{ inventory_hostname }}.crt"
+    dest: "{{ nginx_cert_dir }}/{{ inventory_hostname }}.crt"
+    owner: root
+    group: nginx
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Copy node private key for nginx
+  ansible.builtin.copy:
+    src: "{{ nginx_ca_dir }}/{{ inventory_hostname }}.key"
+    dest: "{{ nginx_cert_dir }}/{{ inventory_hostname }}.key"
+    owner: root
+    group: nginx
+    mode: "0640"
+  notify: Reload nginx
+
+- name: Deploy Woodpecker proxy config
+  ansible.builtin.template:
+    src: woodpecker-proxy.conf.j2
+    dest: /etc/nginx/conf.d/woodpecker-proxy.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Enable httpd_can_network_connect SELinux boolean
+  ansible.posix.seboolean:
+    name: httpd_can_network_connect
+    state: true
+    persistent: true
+  when: ansible_selinux.status == 'enabled'
+
+- name: Add SELinux port context for nginx proxy port
+  ansible.builtin.command:
+    cmd: semanage port -a -t http_port_t -p tcp {{ nginx_woodpecker_proxy_port }}
+  register: semanage_result
+  changed_when: "'already defined' not in semanage_result.stdout and 'already defined' not in semanage_result.stderr"
+  failed_when: semanage_result.rc != 0 and 'already defined' not in semanage_result.stderr
+  when: ansible_selinux.status == 'enabled'
+
+- name: Open nginx proxy port in firewalld
+  ansible.posix.firewalld:
+    port: "{{ nginx_woodpecker_proxy_port }}/tcp"
+    permanent: true
+    state: enabled
+    immediate: true
+  when: ansible_os_family == 'RedHat' and env_name != 'molecule'
+
+- name: Enable and start nginx
+  ansible.builtin.service:
+    name: nginx
+    state: started
+    enabled: true

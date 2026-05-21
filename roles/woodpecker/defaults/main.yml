@@ -11,11 +11,14 @@ woodpecker_group: woodpecker
 woodpecker_podman_group: podman
 woodpecker_home: /var/lib/woodpecker
 woodpecker_config_dir: /etc/woodpecker
+woodpecker_cert_dir: "{{ woodpecker_config_dir }}/certs"
+woodpecker_ca_dir: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca"
 woodpecker_server_binary: /usr/local/bin/woodpecker-server
 woodpecker_agent_binary: /usr/local/bin/woodpecker-agent
 woodpecker_server_port: 8000
+woodpecker_bind_addr: "127.0.0.1"
 woodpecker_grpc_port: 9000
-woodpecker_host: "http://{{ ansible_hostname }}:{{ woodpecker_server_port }}"
+woodpecker_host: "https://{{ ansible_hostname }}:8443"
 woodpecker_gitea_url: "https://node1:3000"
 woodpecker_admin_user: mrplatinum
 woodpecker_podman_socket: /run/podman/podman.sock
