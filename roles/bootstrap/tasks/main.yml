@@ -24,8 +24,9 @@
 - name: Deploy SSH authorized key for ansible user
   ansible.posix.authorized_key:
     user: ansible
-    key: "{{ bootstrap_ansible_pubkey }}"
+    key: "{{ bootstrap_ansible_svc_pubkey }}"
     state: present
+    exclusive: true
 
 - name: Configure scoped passwordless sudo for ansible user
   ansible.builtin.template:
