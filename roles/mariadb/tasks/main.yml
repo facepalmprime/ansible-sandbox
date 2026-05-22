@@ -13,7 +13,7 @@
     enabled: true
 
 - name: Create Gitea database
-  community.mysql.mysql_db:
+  ansible.mysql.mysql_db:
     name: "{{ mariadb_gitea_db }}"
     state: present
     encoding: utf8mb4
@@ -21,9 +21,29 @@
     login_unix_socket: /var/lib/mysql/mysql.sock
 
 - name: Create Gitea database user
-  community.mysql.mysql_user:
+  ansible.mysql.mysql_user:
     name: "{{ mariadb_gitea_user }}"
     password: "{{ mariadb_gitea_password }}"
     priv: "{{ mariadb_gitea_db }}.*:ALL"
     state: present
+    login_unix_socket: /var/lib/mysql/mysql.sock
+
+- name: Remove anonymous MariaDB users
+  ansible.mysql.mysql_user:
+    name: ''
+    host_all: true
+    state: absent
+    login_unix_socket: /var/lib/mysql/mysql.sock
+
+- name: Remove test database
+  ansible.mysql.mysql_db:
+    name: test
+    state: absent
+    login_unix_socket: /var/lib/mysql/mysql.sock
+
+- name: Remove remote root access
+  ansible.mysql.mysql_user:
+    name: root
+    host: '%'
+    state: absent
     login_unix_socket: /var/lib/mysql/mysql.sock

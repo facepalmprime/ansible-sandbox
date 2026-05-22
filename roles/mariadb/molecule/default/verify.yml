@@ -48,3 +48,25 @@
       ansible.builtin.assert:
         that: "'gitea' in user_check.stdout"
         fail_msg: "gitea MariaDB user not found"
+
+    - name: Check anonymous users are absent
+      ansible.builtin.command:
+        cmd: mysql -u root -e "SELECT COUNT(*) FROM mysql.user WHERE User='';"
+      register: anon_users
+      changed_when: false
+
+    - name: Assert no anonymous users
+      ansible.builtin.assert:
+        that: "'0' in anon_users.stdout"
+        fail_msg: "Anonymous MySQL users still exist"
+
+    - name: Check test database is absent
+      ansible.builtin.command:
+        cmd: mysql -u root -e "SHOW DATABASES LIKE 'test';"
+      register: test_db
+      changed_when: false
+
+    - name: Assert test database is gone
+      ansible.builtin.assert:
+        that: "test_db.stdout_lines | length <= 1"
+        fail_msg: "test database still exists"
