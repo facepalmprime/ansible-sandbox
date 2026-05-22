@@ -12,6 +12,13 @@ WorkingDirectory={{ gitea_home }}
 ExecStart={{ gitea_binary }} web --config {{ gitea_config_dir }}/app.ini
 Restart=always
 Environment=USER={{ gitea_user }} HOME={{ gitea_home }} GITEA_WORK_DIR={{ gitea_home }}
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=yes
+PrivateDevices=yes
+ReadWritePaths={{ gitea_home }} {{ gitea_config_dir }}
+CapabilityBoundingSet=
 
 [Install]
 WantedBy=multi-user.target
