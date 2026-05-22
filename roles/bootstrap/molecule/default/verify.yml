@@ -23,6 +23,13 @@
           - sudo_file.stat.mode == '0440'
         fail_msg: "/etc/sudoers.d/ansible missing or wrong permissions"
 
+    - name: Check sudoers has audit logging configured
+      ansible.builtin.command:
+        cmd: 'grep -c "logfile=" /etc/sudoers.d/ansible'
+      register: log_count
+      changed_when: false
+      failed_when: log_count.stdout | int == 0
+
     - name: Check /home/ansible/.ssh directory exists
       ansible.builtin.stat:
         path: /home/ansible/.ssh

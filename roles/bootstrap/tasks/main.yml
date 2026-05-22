@@ -27,11 +27,11 @@
     key: "{{ bootstrap_ansible_pubkey }}"
     state: present
 
-- name: Configure passwordless sudo for ansible user
-  ansible.builtin.copy:
-    content: "ansible ALL=(ALL) NOPASSWD: ALL\n"
+- name: Configure scoped passwordless sudo for ansible user
+  ansible.builtin.template:
+    src: ansible-sudoers.j2
     dest: /etc/sudoers.d/ansible
     owner: root
     group: root
-    mode: '0440'
+    mode: "0440"
     validate: /usr/sbin/visudo -cf %s

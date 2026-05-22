@@ -1,0 +1,10 @@
+# Managed by Ansible - do not edit manually
+# ansible service account - automation access with logging
+# Full NOPASSWD required for general-purpose Ansible module execution.
+# True remediation requires per-task become scoping
+
+Defaults:ansible !requiretty
+Defaults:ansible logfile=/var/log/ansible-sudo.log
+Defaults:ansible loglinelen=0
+
+ansible ALL=(ALL) NOPASSWD: ALL
