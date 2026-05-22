@@ -26,6 +26,8 @@ LEVEL = Info
 [security]
 SECRET_KEY = {{ vault_gitea_secret_key }}
 INSTALL_LOCK = true
+PASSWORD_COMPLEXITY = lower,upper,digit,spec
+MIN_PASSWORD_LENGTH = 16
 INTERNAL_TOKEN = {{ vault_gitea_internal_token }}
 
 [oauth2]
@@ -33,3 +35,7 @@ JWT_SECRET = {{ vault_gitea_jwt_secret }}
 
 [webhook]
 ALLOWED_HOST_LIST = {{ ansible_default_ipv4.address }}
+
+[service]
+DISABLE_REGISTRATION = true
+REQUIRE_SIGNIN_VIEW = true
