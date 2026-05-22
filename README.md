@@ -4,9 +4,9 @@ I built this to have somewhere to break things on purpose.
 
 ## What This Is
 
-I set up a sandbox to play inside with the intention of learning enterprise-level
-Ansible skills — how to bootstrap infrastructure, automate it properly, and find out
-what actually breaks when you do it on real hardware instead of a tutorial VM.
+I built this to learn enterprise Ansible on real hardware — how to bootstrap
+infrastructure, automate it properly, and find out what actually breaks when you do it
+instead of a tutorial VM.
 
 Five physical and virtual nodes. Two Linux families. Everything managed by Ansible
 from first boot. If something isn't automated here, it doesn't exist.
@@ -21,9 +21,9 @@ from first boot. If something isn't automated here, it doesn't exist.
 | node4 | Rocky Linux 8.9 | VM on node1 — bridged         | dev         |
 | node5 | Ubuntu 22.04    | VM on node2 — NAT/ProxyJump   | test        |
 
-**node2's wifi drops on purpose.** I wanted a test environment that actually misbehaves.
-Playbooks that only run against stable nodes don't teach you anything. Every time node2
-drops it's a chance to practice handling partial failures gracefully.
+**node2's wifi is unreliable.** It drops periodically and I haven't fixed it yet.
+Turns out that's useful — playbooks that only run against stable nodes don't teach
+you anything about partial failures.
 
 ## What's Built
 
@@ -307,6 +307,39 @@ password in Woodpecker's secret store, inject it as an environment variable at r
 write it to the expected path before lint runs, delete it after. The password never
 touches the repo or the logs.
 
+## Security Hardening
+
+Before deploying any public-facing services I ran through CIS benchmarks section by
+section and fixed what came up. The changes:
+
+- **Local CA + TLS throughout** — self-signed CA, certs distributed to all nodes,
+  Gitea and Woodpecker both behind HTTPS. Login tokens aren't going over plain HTTP anymore.
+- **Binary checksum verification** — every `get_url` task now has a pinned SHA256.
+  If the download doesn't match, Ansible refuses to install it.
+- **Systemd sandboxing** — `NoNewPrivileges`, `PrivateTmp`, `ProtectSystem`, scoped
+  `ReadWritePaths` on every service unit. A compromised Gitea or Woodpecker process
+  can't read `/home` or write outside its own directories.
+- **MariaDB hardened** — anonymous users and test database removed post-install.
+- **gitleaks in pre-commit hook** — staged files scanned for secrets before every
+  commit. One accidental vault password paste gets caught before it reaches git history.
+- **Pinned collection versions** — `requirements.yml` has exact version pins. Fresh
+  installs get exactly what was tested, not whatever is latest.
+- **Separate SSH keys** — the ansible service account uses a dedicated ed25519 key.
+  Rotating automation credentials doesn't affect interactive access and vice versa.
+
+One thing that didn't go as planned: scoping the ansible service account's sudoers
+to specific commands. Ansible's pipelining model executes modules via `sudo /bin/sh`,
+which makes command-level scoping equivalent to `NOPASSWD: ALL` in practice — you'd
+need per-task `become:` throughout every playbook to do it properly. Every sudo
+invocation is logged to `/var/log/ansible-sudo.log` on each node instead.
+At least I'll know if something weird happens.
+
+**On the vault password file.** `ansible.cfg` sets `vault_password_file = secret.txt`.
+That's a plaintext file on the control node, mode 0600, gitignored. If someone gets
+to the control node, vault is broken. In prod, pull the password from HashiCorp Vault
+or SSM at runtime. For a home lab where the threat is physical access to one machine,
+0600 and gitignore is the call.
+
 ## Engineering Practices
 
 | Practice | Why |
@@ -369,27 +402,19 @@ cd roles/common && molecule test
 
 ## What's Next
 
-The lab is still running. A few things on the roadmap:
+The lab is still running. A few things left on the roadmap:
 
-- **Security hardening** — a full audit of everything built so far against NIST 800-53
-  and CIS benchmarks before any public-facing services go up. TLS throughout, binary
-  checksum verification, systemd sandboxing on every service unit, secret scanning in
-  the pre-commit hook. Tightening what's already built before adding more to it.
 - **Self-hosted services** — Pi-hole for DNS filtering, Jellyfin for media, Nextcloud
-  for file sync. All deployed via Ansible roles using the same TDD pattern. If the
-  playbook doesn't do it, it doesn't happen.
-- **Chaos engineering** — structured failure injection once the service layer is stable.
-  node2's wifi dropping is already built in; the next step is making the playbooks prove
-  they handle it rather than just observing that they do.
-- **Red Hat ecosystem depth** — this lab doubles as a practice environment for going
-  further in the Red Hat certification track. Building toward that on real hardware
-  instead of a sandboxed exam environment.
-- **Kubernetes** — I have some exposure and want to go deeper. Plan is to stand up a
-  small cluster here and manage it with Ansible — the automation patterns carry over
-  directly.
-- **Terraform** — the bare-metal foundation is in place. The next gap is cloud
-  provisioning. Terraform is the tool for that and I'm starting to explore it as a
-  parallel track alongside this project.
+  for file sync. Same TDD pattern as everything else — Molecule green before it touches
+  a real node. If the playbook doesn't do it, it doesn't happen.
+- **Chaos engineering** — node2's wifi drops periodically and I've never properly fixed it.
+  It's been useful for finding out what actually breaks. Eventually I want structured
+  failure injection rather than just waiting for the wifi to die.
+- **Red Hat ecosystem depth** — building toward more Red Hat certifications on real
+  hardware rather than a sandboxed exam environment.
+- **Kubernetes** — I want to go deeper and this is the hardware to do it on. Small
+  cluster, managed by Ansible, figure out where the automation model breaks down.
+- **Terraform** — bare-metal is covered, cloud provisioning isn't. That's the next gap.
 
 ## Certifications
 
