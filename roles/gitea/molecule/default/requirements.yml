@@ -3,4 +3,5 @@ collections:
   - ansible.posix
   - community.general
   - community.mysql
+  - ansible.mysql
   - community.crypto
