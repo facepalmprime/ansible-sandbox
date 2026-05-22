@@ -8,3 +8,8 @@ echo "Running ansible-lint..."
 ansible-lint
 
 echo "ansible-lint passed."
+
+echo "Running gitleaks secret scan..."
+gitleaks protect --staged --redact
+
+echo "gitleaks passed"
