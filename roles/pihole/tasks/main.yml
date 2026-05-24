@@ -1,0 +1,93 @@
+---
+- name: Create pihole group
+  ansible.builtin.group:
+    name: pihole
+    state: present
+
+- name: Create pihole user
+  ansible.builtin.user:
+    name: pihole
+    shell: /sbin/nologin
+    system: true
+    group: pihole
+    state: present
+
+- name: Check if Pi-hole is already installed
+  ansible.builtin.stat:
+    path: /etc/systemd/system/pihole-FTL.service
+  register: pihole_service
+
+- name: Create /etc/pihole directory
+  ansible.builtin.file:
+    path: /etc/pihole
+    state: directory
+    owner: pihole
+    group: pihole
+    mode: "0755"
+
+- name: Deploy pihole.toml config
+  ansible.builtin.template:
+    src: pihole.toml.j2
+    dest: /etc/pihole/pihole.toml
+    owner: pihole
+    group: pihole
+    mode: "0640"
+  when: not pihole_service.stat.exists
+
+- name: Download Pi-hole installer
+  ansible.builtin.get_url:
+    url: "{{ pihole_installer_url }}"
+    dest: /tmp/pihole_install.sh
+    mode: "0755"
+    checksum: "{{ pihole_installer_checksum }}"
+  when: env_name != 'molecule'
+
+- name: Run Pi-hole installer (skips if already installed)
+  ansible.builtin.command:
+    cmd: bash /tmp/pihole_install.sh --unattended
+    creates: /etc/systemd/system/pihole-FTL.service
+  environment:
+    PIHOLE_SKIP_OS_CHECK: "true"
+    PIHOLE_SELINUX: "true"
+  when: env_name != 'molecule'
+  changed_when: true
+
+- name: Open firewall for DNS (port 53)
+  ansible.posix.firewalld:
+    service: dns
+    state: enabled
+    permanent: true
+    immediate: true
+  when: env_name != 'molecule'
+
+- name: Open firewall for HTTP (Pi-hole web UI)
+  ansible.posix.firewalld:
+    service: http
+    state: enabled
+    permanent: true
+    immediate: true
+  when: env_name != 'molecule'
+
+- name: Open firewall for HTTPS (pi-hole web UI)
+  ansible.posix.firewalld:
+    service: https
+    state: enabled
+    permanent: true
+    immediate: true
+  when: env_name != 'molecule'
+
+- name: Check for SELinux AVC denials related to pihole-FTL
+  ansible.builtin.command:
+    cmd: ausearch -m avc -ts recent -c pihole-FTL
+  register: selinux_avc
+  changed_when: false
+  failed_when: false
+  when: env_name != 'molecule'
+
+- name: Report any SELinux denials for pihole-FTL
+  ansible.builtin.debug:
+    msg: "SELinux AVC denials detected - review before proceeding: {{ selinux_avc.stdout }}"
+  when:
+    - env_name != 'molecule'
+    - selinux_avc.rc == 0
+    - selinux_avc.stdout | length > 0

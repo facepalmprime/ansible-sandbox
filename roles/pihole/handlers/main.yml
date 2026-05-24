@@ -1,0 +1,16 @@
+---
+- name: Restart pihole-FTL
+  ansible.builtin.systemd:
+    name: pihole-FTL
+    state: restarted
+  when: env_name != 'molecule'
+  listen: "restart pihole-FTL"
+
+- name: Wait for pihole-FTL port
+  ansible.builtin.wait_for:
+    host: "{{ ansible_default_ipv4.address }}"
+    port: 53
+    state: started
+    timeout: 30
+  when: env_name != 'molecule'
+  listen: "restart pihole-FTL"

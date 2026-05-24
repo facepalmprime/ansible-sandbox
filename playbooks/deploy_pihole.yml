@@ -1,0 +1,7 @@
+---
+- name: Deploy Pi-hole DNS adblocker
+  hosts: pihole
+  become: true
+
+  roles:
+    - role: pihole

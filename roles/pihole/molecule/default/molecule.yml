@@ -1,0 +1,23 @@
+---
+dependency:
+  name: galaxy
+driver:
+  name: podman
+platforms:
+  - name: rocky8-pihole-test
+    image: docker.io/geerlingguy/docker-rockylinux8-ansible:latest
+    pre_build_image: true
+    privileged: true
+    command: /usr/sbin/init
+provisioner:
+  name: ansible
+  env:
+    ANSIBLE_CONFIG: "../../ansible.cfg"
+  inventory:
+    group_vars:
+      all:
+        ansible_python_interpreter: /usr/bin/python3
+        env_name: molecule
+        vault_pihole_webpassword: "molecule_test_password_123"
+verifier:
+  name: ansible

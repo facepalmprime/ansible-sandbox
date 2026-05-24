@@ -1,0 +1,9 @@
+---
+pihole_installer_url: "https://install.pi-hole.net"
+pihole_installer_checksum: "sha256:a80ac88e20f87561564f41a237208b7fc30efbf978fa85100bd37d81f23e8267"
+pihole_interface: "{{ ansible_default_ipv4.interface }}"
+pihole_ipv4_address: "{{ ansible_default_ipv4.address }}"
+pihole_dns_1: "8.8.8.8"
+pihole_dns_2: "8.8.4.4"
+pihole_web_port: 80
+pihole_dns_port: 53

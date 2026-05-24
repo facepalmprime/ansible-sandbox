@@ -1,0 +1,33 @@
+---
+- name: Verify pihole role (container-safe checks)
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Check /etc/pihole directory exists
+      ansible.builtin.stat:
+        path: /etc/pihole
+      register: pihole_dir
+
+    - name: Assert /etc/pihole directory present
+      ansible.builtin.assert:
+        that:
+          - pihole_dir.stat.exists
+          - pihole_dir.stat.isdir
+        fail_msg: "/etc/pihole directory was not created by the role"
+
+    - name: Check pihole.toml is present
+      ansible.builtin.stat:
+        path: /etc/pihole/pihole.toml
+      register: pihole_config
+
+    - name: Assert pihole.toml deployed
+      ansible.builtin.assert:
+        that: pihole_config.stat.exists
+        fail_msg: "pihole.toml was not templated - check the template task"
+
+    - name: Check pihole group exists
+      ansible.builtin.command:
+        cmd: getent group pihole
+      register: pihole_group_check
+      changed_when: false
+      failed_when: pihole_group_check.rc != 0
