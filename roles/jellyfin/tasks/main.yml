@@ -1,0 +1,257 @@
+---
+- name: Remove legacy systemd hardening drop-in if present
+  ansible.builtin.file:
+    path: /etc/systemd/system/jellyfin.service.d
+    state: absent
+
+- name: Install SELinux policy build tools
+  ansible.builtin.dnf:
+    name:
+      - checkpolicy
+      - policycoreutils-python-utils
+    state: present
+
+- name: Ensure SELinux local policy exists
+  ansible.builtin.file:
+    path: /etc/selinux/targeted/local
+    state: directory
+    mode: "0755"
+
+- name: Copy jellyfin SELinux policy source
+  ansible.builtin.copy:
+    src: jellyfin-container.te
+    dest: /etc/selinux/targeted/local/jellyfin-container.te
+    mode: "0644"
+  register: jellyfin_selinux_te
+  when: env_name != 'molecule'
+
+- name: Compile jellyfin SELinux policy module
+  ansible.builtin.command:
+    cmd: checkmodule -M -m -o /etc/selinux/targeted/local/jellyfin-container.mod /etc/selinux/targeted/local/jellyfin-container.te
+  when:
+    - jellyfin_selinux_te.changed
+    - env_name != 'molecule'
+  changed_when: true
+
+
+- name: Package jellyfin SELinux policy module
+  ansible.builtin.command:
+    cmd: semodule_package -o /etc/selinux/targeted/local/jellyfin-container.pp -m /etc/selinux/targeted/local/jellyfin-container.mod
+  when:
+    - jellyfin_selinux_te.changed
+    - env_name != 'molecule'
+  changed_when: true
+
+- name: Install jellyfin SELinux policy module
+  ansible.builtin.command:
+    cmd: semodule -i /etc/selinux/targeted/local/jellyfin-container.pp
+  when:
+    - jellyfin_selinux_te.changed
+    - env_name != 'molecule'
+  changed_when: true
+
+- name: Add container storage fcontext rule
+  ansible.builtin.command:
+    cmd: semanage fcontext -a -t container_file_t '/var/lib/containers/storage(/.*)?'
+  register: fcontext_add
+  changed_when: fcontext_add.rc == 0 and 'already defined' not in fcontext_add.stderr
+  failed_when: fcontext_add.rc != 0 and 'already defined' not in fcontext_add.stderr
+  when: env_name != 'molecule'
+
+- name: Apply container storage fcontext labels
+  ansible.builtin.command:
+    cmd: restorecon -R /var/lib/containers/storage/
+  changed_when: false
+  when: env_name != 'molecule'
+
+- name: Add jellyfin config fcontext rule
+  ansible.builtin.command:
+    cmd: semanage fcontext -a -t jellyfin_data_t '/etc/jellyfin(/.*)?'
+  register: fcontext_config
+  changed_when: fcontext_config.rc == 0 and 'already defined' not in fcontext_config.stderr
+  failed_when: fcontext_config.rc != 0 and 'already defined' not in fcontext_config.stderr
+  when: env_name != 'molecule'
+
+- name: Add jellyfin cache fcontext rule
+  ansible.builtin.command:
+    cmd: semanage fcontext -a -t jellyfin_data_t '/var/cache/jellyfin(/.*)?'
+  register: fcontext_cache
+  changed_when: fcontext_cache.rc == 0 and 'already defined' not in fcontext_cache.stderr
+  failed_when: fcontext_cache.rc != 0 and 'already defined' not in fcontext_cache.stderr
+  when: env_name != 'molecule'
+
+- name: Apply jellyfin fcontext labels
+  ansible.builtin.command:
+    cmd: restorecon -Rv /etc/jellyfin /var/cache/jellyfin /srv/media
+  register: restorecon_result
+  changed_when: false
+  failed_when: restorecon_result.rc != 0 and 'No such file or directory' not in restorecon_result.stderr
+  when: env_name != 'molecule'
+
+- name: Add jellyfin media fcontext rule
+  ansible.builtin.command:
+    cmd: semanage fcontext -a -t jellyfin_media_t '/srv/media(/.*)?'
+  register: fcontext_media
+  changed_when: fcontext_media.rc == 0 and 'already defined' not in fcontext_media.stderr
+  failed_when: fcontext_media.rc != 0 and 'already defined' not in fcontext_media.stderr
+  when: env_name != 'molecule'
+
+- name: Create jellyfin group
+  ansible.builtin.group:
+    name: jellyfin
+    gid: "{{ jellyfin_gid }}"
+    system: true
+    state: present
+
+- name: Create jellyfin user
+  ansible.builtin.user:
+    name: jellyfin
+    uid: "{{ jellyfin_uid }}"
+    group: jellyfin
+    shell: /sbin/nologin
+    system: true
+    state: present
+
+- name: Fix ownership of existing jellyfin data directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: jellyfin
+    group: jellyfin
+    recurse: true
+  loop:
+    - "{{ jellyfin_config_dir }}"
+    - "{{ jellyfin_cache_dir }}"
+  when: env_name != 'molecule'
+
+- name: Create config, cache, and TLS directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: jellyfin
+    group: jellyfin
+    mode: "0750"
+  loop:
+    - "{{ jellyfin_config_dir }}"
+    - "{{ jellyfin_cache_dir }}"
+    - "{{ jellyfin_config_dir }}/tls"
+
+- name: Create media directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: jellyfin
+    group: jellyfin
+    mode: "0755"
+  loop: "{{ jellyfin_media_dirs }}"
+
+- name: Generate TLS private key
+  community.crypto.openssl_privatekey:
+    path: "{{ jellyfin_tls_key }}"
+    size: 4096
+    type: RSA
+    owner: jellyfin
+    group: jellyfin
+    mode: "0640"
+  when: env_name != 'molecule'
+
+- name: Generate TLS certificate signing request
+  community.crypto.openssl_csr:
+    path: "{{ jellyfin_config_dir }}/tls/jellyfin.csr"
+    privatekey_path: "{{ jellyfin_tls_key }}"
+    common_name: "{{ ansible_hostname }}"
+    subject_alt_name:
+      - "DNS:{{ ansible_hostname }}"
+      - "IP:{{ ansible_default_ipv4.address }}"
+    owner: jellyfin
+    group: jellyfin
+    mode: "0640"
+  when: env_name != 'molecule'
+
+- name: Generate self-signed TLS certificate
+  community.crypto.x509_certificate:
+    path: "{{ jellyfin_tls_cert }}"
+    privatekey_path: "{{ jellyfin_tls_key }}"
+    csr_path: "{{ jellyfin_config_dir }}/tls/jellyfin.csr"
+    provider: selfsigned
+    selfsigned_not_after: "+825d"
+    owner: jellyfin
+    group: jellyfin
+    mode: "0644"
+  when: env_name != 'molecule'
+
+- name: Bundle TLS cert and key into PKCS12
+  ansible.builtin.command:
+    cmd: >
+      openssl pkcs12 -export
+      -out {{ jellyfin_config_dir }}/tls/jellyfin.pfx
+      -inkey {{ jellyfin_tls_key }}
+      -in {{ jellyfin_tls_cert }}
+      -passout pass:
+    creates: "{{ jellyfin_config_dir }}/tls/jellyfin.pfx"
+  changed_when: false
+  when: env_name != 'molecule'
+
+- name: Set ownership on PKCS12 bundle
+  ansible.builtin.file:
+    path: "{{ jellyfin_config_dir }}/tls/jellyfin.pfx"
+    owner: jellyfin
+    group: jellyfin
+    mode: "0640"
+  when: env_name != 'molecule'
+
+- name: Pull Jellyfin container image by digest
+  ansible.builtin.command:
+    cmd: "podman pull {{ jellyfin_container_image }}@{{ jellyfin_container_digest }}"
+  changed_when: false
+  when: env_name != 'molecule'
+
+- name: Deploy Jellyfin container systemd unit
+  ansible.builtin.template:
+    src: jellyfin-container.service.j2
+    dest: /etc/systemd/system/jellyfin.service
+    mode: "0644"
+  notify:
+    - Reload systemd daemon
+    - Restart jellyfin
+
+- name: Enable and start Jellyfin service
+  ansible.builtin.systemd:
+    name: jellyfin
+    state: started
+    enabled: true
+    daemon_reload: true
+  when: env_name != 'molecule'
+
+- name: Open firewall for Jellyfin HTTP
+  ansible.posix.firewalld:
+    port: "{{ jellyfin_http_port }}/tcp"
+    state: enabled
+    permanent: true
+    immediate: true
+  when: env_name != 'molecule'
+
+- name: Open firewall for Jellyfin HTTPS
+  ansible.posix.firewalld:
+    port: "{{ jellyfin_https_port }}/tcp"
+    state: enabled
+    permanent: true
+    immediate: true
+  when: env_name != 'molecule'
+
+
+- name: Check for SELinux AVC denials related to jellyfin
+  ansible.builtin.command:
+    cmd: ausearch -m avc -ts recent -c jellyfin
+  register: selinux_avc
+  changed_when: false
+  failed_when: false
+  when: env_name != 'molecule'
+
+- name: Report any SELinux denials for jellyfin
+  ansible.builtin.debug:
+    msg: "SELinux AVC denials for jellyfin - review before proceeding: {{ selinux_avc.stdout }}"
+  when:
+    - env_name != 'molecule'
+    - selinux_avc.rc == 0
+    - selinux_avc.stdout | length > 0

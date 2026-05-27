@@ -1,0 +1,11 @@
+---
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: env_name != 'molecule'
+
+- name: Restart jellyfin
+  ansible.builtin.systemd:
+    name: jellyfin
+    state: restarted
+  when: env_name != 'molecule'

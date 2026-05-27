@@ -1,0 +1,82 @@
+module jellyfin-container 1.2;
+
+  require {
+      attribute domain;
+      attribute svirt_sandbox_domain;
+      attribute mcs_constrained_type;
+      attribute file_type;
+      type container_file_t;
+      type tmpfs_t;
+      type cgroup_t;
+      type proc_t;
+      type proc_net_t;
+      type sysfs_t;
+      type unconfined_t;
+      type unconfined_service_t;
+      type container_runtime_t;
+      class process { execmem getsession transition };
+      class process2 nnp_transition;
+      class file { read write create open append getattr setattr unlink
+  map execute lock rename execute_no_trans entrypoint };
+      class dir { read write create search getattr setattr add_name
+  remove_name rmdir };
+      class lnk_file { read getattr };
+      class chr_file { read write open ioctl };
+      class netlink_route_socket { create bind write read nlmsg_read getattr };
+      class tcp_socket { create connect bind listen accept setopt ioctl node_bind name_connect getattr getopt recvfrom read write shutdown };
+      class udp_socket { create bind ioctl setopt name_bind };
+      class peer recv;
+      class netlink_route_socket getopt;
+      type unreserved_port_t;
+      type node_t;
+      type unlabeled_t;
+      class tcp_socket name_bind;
+  }
+
+  type jellyfin_container_t;
+  typeattribute jellyfin_container_t domain;
+  typeattribute jellyfin_container_t svirt_sandbox_domain;
+  typeattribute jellyfin_container_t mcs_constrained_type;
+
+  type jellyfin_data_t;
+  typeattribute jellyfin_data_t file_type;
+
+  type jellyfin_media_t;
+  typeattribute jellyfin_media_t file_type;
+
+  # Process permissions
+  allow jellyfin_container_t self:process { execmem getsession };
+  allow jellyfin_container_t container_file_t:chr_file { read write open ioctl };
+  allow jellyfin_container_t container_file_t:file { entrypoint execute execute_no_trans };
+  allow jellyfin_container_t cgroup_t:file { read open };
+  allow jellyfin_container_t proc_t:file { read open };
+  allow jellyfin_container_t proc_net_t:file { read open lock };
+  allow jellyfin_container_t sysfs_t:file { read open };
+  allow jellyfin_container_t tmpfs_t:file { map execute };
+  allow jellyfin_container_t self:netlink_route_socket { create bind write read nlmsg_read getattr };
+  allow jellyfin_container_t self:tcp_socket { create connect bind listen accept setopt ioctl getattr getopt read write recvfrom shutdown };
+  allow jellyfin_container_t self:udp_socket { create bind ioctl setopt };
+  allow jellyfin_container_t self:netlink_route_socket getopt;
+  allow jellyfin_container_t unreserved_port_t:udp_socket name_bind;
+  allow jellyfin_container_t unreserved_port_t:tcp_socket name_connect;
+  allow jellyfin_container_t node_t:tcp_socket node_bind;
+  allow jellyfin_container_t unreserved_port_t:tcp_socket name_bind;
+  allow unconfined_t jellyfin_container_t:process2 nnp_transition;
+  allow container_runtime_t jellyfin_container_t:process transition;
+  allow container_runtime_t jellyfin_container_t:process2 nnp_transition;
+  allow unconfined_service_t jellyfin_container_t:process2 nnp_transition;
+  allow unconfined_service_t jellyfin_container_t:process transition;
+
+  # Allow receiving from unlabeled peers (Podman bridge cross-namespace traffic)
+  allow jellyfin_container_t unlabeled_t:peer recv;
+  allow jellyfin_container_t unlabeled_t:tcp_socket recvfrom;
+
+  # Data directory permissions (config, cache — read/write)
+  allow jellyfin_container_t jellyfin_data_t:dir { read write create search getattr setattr add_name remove_name rmdir };
+  allow jellyfin_container_t jellyfin_data_t:file { read write create open append getattr setattr unlink map lock rename };
+  allow jellyfin_container_t jellyfin_data_t:lnk_file { read getattr };
+
+  # Media directory — READ ONLY (Jellyfin reads media, never writes)
+  allow jellyfin_container_t jellyfin_media_t:dir { read search getattr};
+  allow jellyfin_container_t jellyfin_media_t:file { read getattr open map };
+  allow jellyfin_container_t jellyfin_media_t:lnk_file { read getattr };

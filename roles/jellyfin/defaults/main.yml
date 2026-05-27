@@ -1,0 +1,19 @@
+---
+jellyfin_http_port: 8096
+jellyfin_https_port: 8920
+jellyfin_container_image: "docker.io/jellyfin/jellyfin"
+jellyfin_container_tag: "10.11.10"
+jellyfin_container_digest: "sha256:20627fde0aa94728fa7211d0eb3463645741492848787911def04c4bb1f106f8"
+jellyfin_config_dir: /etc/jellyfin
+jellyfin_cache_dir: /var/cache/jellyfin
+jellyfin_tls_cert: /etc/jellyfin/tls/jellyfin.crt
+jellyfin_tls_key: /etc/jellyfin/tls/jellyfin.key
+jellyfin_uid: 970
+jellyfin_gid: 970
+jellyfin_memory_limit: "2g"
+jellyfin_cpu_limit: "2.0"
+jellyfin_media_dirs:
+  - /srv/media
+  - /srv/media/movies
+  - /srv/media/tv
+  - /srv/media/music
