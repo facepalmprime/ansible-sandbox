@@ -1,0 +1,406 @@
+---
+- name: Create nextcloud group
+  ansible.builtin.group:
+    name: nextcloud
+    gid: "{{ nextcloud_gid }}"
+    system: true
+    state: present
+
+- name: Create nextcloud user
+  ansible.builtin.user:
+    name: nextcloud
+    uid: "{{ nextcloud_uid }}"
+    group: nextcloud
+    shell: /sbin/nologin
+    system: true
+    home: "{{ nextcloud_web_root }}"
+    create_home: false
+    state: present
+
+- name: Install EPEL release
+  ansible.builtin.dnf:
+    name: epel-release
+    state: present
+  when: env_name != 'molecule'
+
+- name: Import Remi GPG key
+  ansible.builtin.rpm_key:
+    key: https://rpms.remirepo.net/RPM-GPG-KEY-remi2018
+    state: present
+  when: env_name != 'molecule'
+
+- name: Install Remi release RPM
+  ansible.builtin.dnf:
+    name: "https://rpms.remirepo.net/enterprise/remi-release-8.rpm"
+    state: present
+    disable_gpg_check: false
+  when: env_name != 'molecule'
+
+- name: Reset PHP module stream
+  ansible.builtin.command:
+    cmd: dnf module reset php -y
+  changed_when: false
+  when: env_name != 'molecule'
+
+- name: Enable PHP module from Remi for version {{ nextcloud_php_version }}
+  ansible.builtin.command:
+    cmd: "dnf module enable php:remi-{{ nextcloud_php_version }} -y"
+  changed_when: false
+  when: env_name != 'molecule'
+
+- name: Install PHP 8.3 and required extensions
+  ansible.builtin.dnf:
+    name:
+      - php
+      - php-fpm
+      - php-mysqlnd
+      - php-xml
+      - php-mbstring
+      - php-gd
+      - php-curl
+      - php-zip
+      - php-intl
+      - php-bcmath
+      - php-gmp
+      - php-sodium
+      - php-apcu
+      - php-opcache
+      - php-imagick
+      - php-process
+      - bzip2
+    state: present
+  when: env_name != 'molecule'
+
+- name: Create nginx group (needed for socket ownership)
+  ansible.builtin.group:
+    name: nginx
+    system: true
+    state: present
+
+- name: Create Nextcloud web root
+  ansible.builtin.file:
+    path: "{{ nextcloud_web_root }}"
+    state: directory
+    owner: nextcloud
+    group: nginx
+    mode: "0750"
+
+- name: Create Nextcloud data directory
+  ansible.builtin.file:
+    path: "{{ nextcloud_data_dir }}"
+    state: directory
+    owner: nextcloud
+    group: nextcloud
+    mode: "0750"
+
+- name: Create PHP sessions directory for Nextcloud
+  ansible.builtin.file:
+    path: "{{ nextcloud_session_dir }}"
+    state: directory
+    owner: nextcloud
+    group: nextcloud
+    mode: "0700"
+
+- name: Allow httpd to connect to databases
+  ansible.posix.seboolean:
+    name: httpd_can_network_connect_db
+    state: true
+    persistent: true
+  when:
+    - env_name != 'molecule'
+    - ansible_selinux.status == 'enabled'
+
+- name: Allow httpd execmem (PHP OPcache)
+  ansible.posix.seboolean:
+    name: httpd_execmem
+    state: true
+    persistent: true
+  when:
+    - env_name != 'molecule'
+    - ansible_selinux.status == 'enabled'
+
+- name: Allow httpd to send email
+  ansible.posix.seboolean:
+    name: httpd_can_sendmail
+    state: true
+    persistent: true
+  when:
+    - env_name != 'molecule'
+    - ansible_selinux.status == 'enabled'
+
+- name: Add SELinux fcontext for web root
+  ansible.builtin.command:
+    cmd: "semanage fcontext -a -t httpd_sys_rw_content_t '{{ nextcloud_web_root }}(/.*)?'"
+  register: fcontext_webroot
+  changed_when: fcontext_webroot.rc == 0 and 'already defined' not in fcontext_webroot.stderr
+  failed_when: fcontext_webroot.rc != 0 and 'already defined' not in fcontext_webroot.stderr
+  when:
+    - env_name != 'molecule'
+    - ansible_selinux.status == 'enabled'
+
+- name: Add SELinux fcontext for data directory
+  ansible.builtin.command:
+    cmd: "semanage fcontext -a -t httpd_sys_rw_content_t '{{ nextcloud_data_dir }}(/.*)?'"
+  register: fcontext_data
+  changed_when: fcontext_data.rc == 0 and 'already defined' not in fcontext_data.stderr
+  failed_when: fcontext_data.rc != 0 and 'already defined' not in fcontext_data.stderr
+  when:
+    - env_name != 'molecule'
+    - ansible_selinux.status == 'enabled'
+
+- name: Add SELinux fcontext for session directory
+  ansible.builtin.command:
+    cmd: "semanage fcontext -a -t httpd_sys_rw_content_t '{{ nextcloud_session_dir }}(/.*)?'"
+  register: fcontext_session
+  changed_when: fcontext_session.rc == 0 and 'already defined' not in fcontext_session.stderr
+  failed_when: fcontext_session.rc != 0 and 'already defined' not in fcontext_session.stderr
+  when:
+    - env_name != 'molecule'
+    - ansible_selinux.status == 'enabled'
+
+- name: Apply SELinux fcontext labels
+  ansible.builtin.command:
+    cmd: "restorecon -Rv {{ nextcloud_web_root }} {{ nextcloud_data_dir }} {{ nextcloud_session_dir }}"
+  register: restorecon_result
+  changed_when: restorecon_result.stdout | length > 0
+  failed_when: restorecon_result.rc != 0 and 'No such file' not in restorecon_result.stderr
+  when:
+    - env_name != 'molecule'
+    - ansible_selinux.status == 'enabled'
+
+- name: Download Nextcloud tarball
+  ansible.builtin.get_url:
+    url: "{{ nextcloud_download_url }}"
+    dest: "/tmp/nextcloud-{{ nextcloud_version }}.tar.bz2"
+    checksum: "{{ nextcloud_checksum }}"
+    mode: "0644"
+  when: env_name != 'molecule'
+
+- name: Extract Nextcloud to /var/www
+  ansible.builtin.unarchive:
+    src: "/tmp/nextcloud-{{ nextcloud_version }}.tar.bz2"
+    dest: /var/www
+    remote_src: true
+    owner: nextcloud
+    group: nginx
+    creates: "{{ nextcloud_web_root }}/version.php"
+  when: env_name != 'molecule'
+
+- name: Enforce system_u on web files
+  ansible.builtin.command:
+    cmd: "chcon -R -u system_u {{ nextcloud_web_root }}"
+  changed_when: false
+  when:
+    - env_name != 'molecule'
+    - ansible_selinux.status == 'enabled'
+
+- name: Create Nextcloud MariaDB database
+  ansible.mysql.mysql_db:
+    name: "{{ nextcloud_db_name }}"
+    state: present
+    login_unix_socket: /var/lib/mysql/mysql.sock
+    encoding: utf8mb4
+    collation: utf8mb4_general_ci
+  when: env_name != 'molecule'
+
+- name: Create Nextcloud MariaDB user
+  ansible.mysql.mysql_user:
+    name: "{{ nextcloud_db_user }}"
+    password: "{{ vault_nextcloud_db_password }}"
+    priv: "{{ nextcloud_db_name }}.*:ALL"
+    host: "127.0.0.1"
+    state: present
+    login_unix_socket: /var/lib/mysql/mysql.sock
+  no_log: true
+  when: env_name != 'molecule'
+
+- name: Create PHP-FPM pool directory (molecule only - on real nodes, package install creates it)
+  ansible.builtin.file:
+    path: /etc/php-fpm.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: env_name == 'molecule'
+
+
+- name: Deploy PHP-FPM pool configuration
+  ansible.builtin.template:
+    src: nextcloud-fpm.conf.j2
+    dest: /etc/php-fpm.d/nextcloud.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart php-fpm
+
+- name: Enable and start PHP-FPM
+  ansible.builtin.systemd:
+    name: php-fpm
+    state: started
+    enabled: true
+  when: env_name != 'molecule'
+
+- name: Create nginx conf.d directory (molecule only - on real nodes, package install creates it)
+  ansible.builtin.file:
+    path: /etc/nginx/conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: env_name == 'molecule'
+
+- name: Deploy nginx Nextcloud vhosts
+  ansible.builtin.template:
+    src: nextcloud.conf.j2
+    dest: /etc/nginx/conf.d/nextcloud.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Add SELinux port label for 443
+  ansible.builtin.command:
+    cmd: semanage port -a -t http_port_t -p tcp 443
+  register: semanage_443
+  changed_when: "'already defined' not in semanage_443.stdout and 'already defined' not in semanage_443.stderr"
+  failed_when: semanage_443.rc != 0 and 'already defined' not in semanage_443.stderr
+  when:
+    - env_name != 'molecule'
+    - ansible_selinux.status == 'enabled'
+
+- name: Open HTTPS in firewalld
+  ansible.posix.firewalld:
+    service: https
+    state: enabled
+    permanent: true
+    immediate: true
+  when: env_name != 'molecule'
+
+- name: Check if Nextcloud is already installed
+  ansible.builtin.stat:
+    path: "{{ nextcloud_web_root }}/config/config.php"
+  register: nc_config
+  when: env_name != 'molecule'
+
+- name: Run occ maintenance:install
+  ansible.builtin.command:
+    cmd: >
+      /usr/bin/php occ maintenance:install
+      --database="{{ nextcloud_db_type }}"
+      --database-host="{{ nextcloud_db_host }}"
+      --database-name="{{ nextcloud_db_name }}"
+      --database-user="{{ nextcloud_db_user }}"
+      --database-pass="{{ vault_nextcloud_db_password }}"
+      --admin-user="{{ nextcloud_admin_user }}"
+      --admin-pass="{{ vault_nextcloud_admin_password }}"
+      --data-dir="{{ nextcloud_data_dir }}"
+  args:
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: nextcloud
+  no_log: true
+  changed_when: true
+  when:
+    - env_name != 'molecule'
+    - not nc_config.stat.exists
+
+- name: Get current trusted domains
+  ansible.builtin.command:
+    cmd: "/usr/bin/php occ config:system:get trusted_domains"
+  args:
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: nextcloud
+  register: current_trusted_domains
+  changed_when: false
+  failed_when: false
+  when: env_name != 'molecule'
+
+- name: Set trusted domains
+  ansible.builtin.command:
+    cmd: "/usr/bin/php occ config:system:set trusted_domains {{ idx }} --value='{{ item }}'"
+  args:
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: nextcloud
+  changed_when: true
+  loop: "{{ nextcloud_trusted_domains }}"
+  loop_control:
+    index_var: idx
+  when:
+    - env_name != 'molecule'
+    - item not in (current_trusted_domains.stdout | default(''))
+
+- name: Get current overwrite.cli.url
+  ansible.builtin.command:
+    cmd: "/usr/bin/php occ config:system:get overwrite.cli.url"
+  args:
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: nextcloud
+  register: current_overwrite_url
+  changed_when: false
+  failed_when: false
+  when: env_name != 'molecule'
+
+- name: Set overwrite.cli.url
+  ansible.builtin.command:
+    cmd: "/usr/bin/php occ config:system:set overwrite.cli.url --value='{{ nextcloud_overwrite_cli_url }}'"
+  args:
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: nextcloud
+  changed_when: true
+  when:
+    - env_name != 'molecule'
+    - (current_overwrite_url.stdout | default('') | trim) != nextcloud_overwrite_cli_url
+
+- name: Get current default phone region
+  ansible.builtin.command:
+    cmd: "/usr/bin/php occ config:system:get default_phone_region"
+  args:
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: nextcloud
+  register: current_phone_region
+  changed_when: false
+  failed_when: false
+  when: env_name != 'molecule'
+
+- name: Set default phone region
+  ansible.builtin.command:
+    cmd: "/usr/bin/php occ config:system:set default_phone_region --value='{{ nextcloud_default_phone_region }}'"
+  args:
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: nextcloud
+  changed_when: true
+  when:
+    - env_name != 'molecule'
+    - (current_phone_region.stdout | default('') | trim) != nextcloud_default_phone_region
+
+- name: Enforce system_u on occ-generated config files
+  ansible.builtin.command:
+    cmd: "chcon -R -u system_u {{ nextcloud_web_root }}/config"
+  changed_when: false
+  when:
+    - env_name != 'molecule'
+    - ansible_selinux.status == 'enabled'
+
+- name: Count AVC denials in audit.log
+  ansible.builtin.command:
+    cmd: grep -c 'denied' /var/log/audit/audit.log
+  register: avc_count
+  changed_when: false
+  failed_when: false
+  when: env_name != 'molecule'
+
+- name: Report AVC count
+  ansible.builtin.debug:
+    msg: >
+      AVC denial count: {{ avc_count.stdout }}.
+      If non-zero: sudo grep 'denied' /var/log/audit/audit.log | grep -E 'httpd|php'
+      Do NOT disable SELinux - fix the seboolean or fcontext.
+  when:
+    - env_name != 'molecule'
+    - avc_count.stdout is defined

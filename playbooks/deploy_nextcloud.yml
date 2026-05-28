@@ -1,0 +1,6 @@
+---
+- name: Deploy Nextcloud personal cloud
+  hosts: nextcloud
+  become: true
+  roles:
+    - role: nextcloud

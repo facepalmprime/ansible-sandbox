@@ -1,0 +1,43 @@
+---
+nextcloud_version: 30.0.11
+nextcloud_download_url: "https://download.nextcloud.com/server/releases/nextcloud-{{ nextcloud_version }}.tar.bz2"
+nextcloud_checksum: "sha256:5842772d5d712f105dc8f15d6788459e6144b836cc88a062c905370a2654377a"
+nextcloud_uid: 964
+nextcloud_gid: 964
+
+# Paths
+nextcloud_web_root: /var/www/nextcloud
+nextcloud_data_dir: /srv/nextcloud
+nextcloud_session_dir: /var/lib/php/sessions/nextcloud
+
+# Database
+nextcloud_db_name: nextcloud
+nextcloud_db_user: nextcloud
+nextcloud_db_host: "127.0.0.1"
+nextcloud_db_type: mysql
+
+# PHP-FPM
+nextcloud_fpm_socket: /run/php-fpm/nextcloud.sock
+nextcloud_php_version: "8.3"
+nextcloud_upload_max_size: "16G"
+nextcloud_fpm_max_children: 50
+nextcloud_fpm_start_servers: 10
+nextcloud_fpm_min_spare: 5
+nextcloud_fpm_max_spare: 15
+
+# TLS - reuse CA issued cert already deployed by nginx role
+nextcloud_tls_cert: "/etc/nginx/ssl/{{ inventory_hostname }}.crt"
+nextcloud_tls_key: "/etc/nginx/ssl/{{ inventory_hostname }}.key"
+
+# nginx
+nextcloud_nginx_port: 443
+
+# Admin user - password in vault
+nextcloud_admin_user: "admin"
+
+# occ post-install config
+nextcloud_trusted_domains:
+  - "{{ ansible_default_ipv4.address }}"
+  - "{{ inventory_hostname }}"
+nextcloud_default_phone_region: "US"
+nextcloud_overwrite_cli_url: "https://{{ ansible_default_ipv4.address }}"

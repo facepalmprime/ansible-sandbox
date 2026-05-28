@@ -1,0 +1,12 @@
+---
+- name: Restart php-fpm
+  ansible.builtin.systemd:
+    name: php-fpm
+    state: restarted
+  when: env_name != 'molecule'
+
+- name: Reload nginx
+  ansible.builtin.systemd:
+    name: nginx
+    state: reloaded
+  when: env_name != 'molecule'
