@@ -1,0 +1,184 @@
+---
+- name: Create immich group
+  ansible.builtin.group:
+    name: immich
+    gid: "{{ immich_gid }}"
+    state: present
+
+- name: Create immich user
+  ansible.builtin.user:
+    name: immich
+    uid: "{{ immich_uid }}"
+    group: immich
+    shell: /sbin/nologin
+    system: true
+    state: present
+
+- name: Create immich directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: immich
+    group: immich
+    mode: "0750"
+  loop:
+    - "{{ immich_data_dir }}"
+    - "{{ immich_upload_dir }}"
+    - "{{ immich_config_dir }}"
+
+- name: Create immich postgres directory
+  ansible.builtin.file:
+    path: "{{ immich_postgres_dir }}"
+    state: directory
+    owner: "999"
+    group: "999"
+    mode: "0700"
+
+- name: Copy immich_server CIL policy to config dir
+  ansible.builtin.copy:
+    src: immich_server.cil
+    dest: /etc/immich/immich_server.cil
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Copy immich_ml CIL policy to config dir
+  ansible.builtin.copy:
+    src: immich_ml.cil
+    dest: /etc/immich/immich_ml.cil
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Check loaded SELinux modules at priority 350
+  ansible.builtin.command:
+    cmd: semodule -lfull
+  register: semodule_list
+  changed_when: false
+  when: env_name != 'molecule'
+
+- name: Load udica base_container template at priority 350
+  ansible.builtin.command:
+    cmd: semodule -X 350 -i /usr/share/udica/templates/base_container.cil
+  when:
+    - env_name != 'molecule'
+    - "'base_container' not in semodule_list.stdout"
+  changed_when: true
+
+- name: Load udica net_container template at priority 350
+  ansible.builtin.command:
+    cmd: semodule -X 350 -i /usr/share/udica/templates/net_container.cil
+  when:
+    - env_name != 'molecule'
+    - "'net_container' not in semodule_list.stdout"
+  changed_when: true
+
+- name: Load immich_server SELinux policy
+  ansible.builtin.command:
+    cmd: semodule -i /etc/immich/immich_server.cil
+  when: env_name != 'molecule'
+  changed_when: true
+
+- name: Load immich_ml SELinux policy
+  ansible.builtin.command:
+    cmd: semodule -i /etc/immich/immich_ml.cil
+  when: env_name != 'molecule'
+  changed_when: true
+
+- name: Generate immich TLS private key
+  community.crypto.openssl_privatekey:
+    path: /etc/pki/tls/private/immich.key
+    size: 4096
+    owner: root
+    group: root
+    mode: "0640"
+  when: env_name != 'molecule'
+
+- name: Generate Immich CSR on managed node
+  community.crypto.openssl_csr_pipe:
+    privatekey_path: /etc/pki/tls/private/immich.key
+    common_name: "immich.{{ inventory_hostname }}"
+    subject_alt_name:
+      - "DNS:immich.{{ inventory_hostname }}"
+      - "IP:{{ ansible_default_ipv4.address }}"
+  register: immich_csr
+  when: env_name != 'molecule'
+
+- name: Sign Immich cert on control node
+  community.crypto.x509_certificate_pipe:
+    provider: ownca
+    csr_content: "{{ immich_csr.csr }}"
+    ownca_path: "{{ immich_ca_dir }}/ca.crt"
+    ownca_privatekey_path: "{{ immich_ca_dir }}/ca.key"
+    ownca_not_after: "+90d"
+    ownca_not_before: "-1d"
+  delegate_to: localhost
+  register: immich_cert
+  when: env_name != 'molecule'
+
+- name: Write signed Immich cert to managed node
+  ansible.builtin.copy:
+    content: "{{ immich_cert.certificate }}"
+    dest: /etc/pki/tls/certs/immich.crt
+    owner: root
+    group: root
+    mode: "0644"
+  when: env_name != 'molecule'
+  notify: Reload nginx
+
+- name: Deploy immich.env
+  ansible.builtin.template:
+    src: immich.env.j2
+    dest: "{{ immich_config_dir }}/immich.env"
+    owner: immich
+    group: immich
+    mode: "0640"
+  when: env_name != 'molecule'
+
+- name: Deploy docker-compose.yml
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ immich_config_dir }}/docker-compose.yml"
+    owner: immich
+    group: immich
+    mode: "0640"
+  notify: Restart immich
+  when: env_name != 'molecule'
+
+- name: Check if immich stack is already running
+  ansible.builtin.command:
+    cmd: podman ps -q --filter name=immich_server
+  register: immich_running
+  changed_when: false
+  when: env_name != 'molecule'
+
+- name: Start immich stack
+  ansible.builtin.command:
+    cmd: podman-compose -f {{ immich_config_dir }}/docker-compose.yml up -d
+  when: env_name != 'molecule'
+  changed_when: immich_running.stdout == ""
+
+- name: Deploy nginx vhost for immich
+  ansible.builtin.template:
+    src: nginx-immich.conf.j2
+    dest: /etc/nginx/conf.d/immich.conf
+    owner: root
+    group: root
+    mode: "0644"
+  when: env_name != 'molecule'
+  notify: Reload nginx
+
+- name: Check for AVC denials for immich
+  ansible.builtin.command:
+    cmd: grep -c 'immich.*denied\|denied.*immich' /var/log/audit/audit.log
+  register: avc_check
+  changed_when: false
+  failed_when: false
+  when: env_name != 'molecule'
+
+- name: Report AVC denials if found
+  ansible.builtin.debug:
+    msg: "WARNING: {{ avc_check.stdout }} AVC denials found for immich - check audit.log"
+  when:
+    - env_name != 'molecule'
+    - avc_check.stdout | int > 0

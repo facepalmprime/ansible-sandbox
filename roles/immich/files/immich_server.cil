@@ -1,0 +1,20 @@
+(block immich_server
+    (blockinherit container)
+    (blockinherit restricted_net_container)
+    (allow process process ( capability ( chown dac_override fowner fsetid kill net_bind_service net_raw setfcap setgid setpcap setuid sys_chroot )))
+
+    (allow process unreserved_port_t ( tcp_socket (  name_bind )))
+    (allow process locale_t ( dir ( getattr ioctl lock open read search )))
+    (allow process locale_t ( file ( getattr ioctl lock open read )))
+    (allow process locale_t ( fifo_file ( getattr open read lock ioctl )))
+    (allow process locale_t ( sock_file ( getattr open read )))
+    (allow process user_tmp_t ( dir ( add_name create getattr ioctl lock open read remove_name rmdir search setattr write )))
+    (allow process user_tmp_t ( file ( append create getattr ioctl lock map open read rename setattr unlink write )))
+    (allow process user_tmp_t ( fifo_file ( getattr read write append ioctl lock open )))
+    (allow process user_tmp_t ( sock_file ( append getattr open read write )))
+
+    (allow container_runtime_t immich_server.process (process (transition)))
+    (allow container_runtime_t immich_server.process (process2 (nnp_transition)))
+    (allow immich_server.process postgresql_port_t (tcp_socket (name_connect)))
+    (allow immich_server.process redis_port_t (tcp_socket (name_connect)))
+)

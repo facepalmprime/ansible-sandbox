@@ -1,0 +1,65 @@
+name: immich
+
+services:
+  immich-server:
+    container_name: immich_server
+    image: "{{ immich_server_image }}:{{ immich_version }}"
+    volumes:
+      - "{{ immich_upload_dir }}:/data:Z"
+      - /etc/localtime:/etc/localtime:ro
+    env_file:
+      - "{{ immich_config_dir }}/immich.env"
+    ports:
+      - "127.0.0.1:{{ immich_http_port }}:2283"
+    security_opt:
+      - "label=type:immich_server.process"
+    mem_limit: "{{ immich_server_memory }}"
+    cpus: "{{ immich_server_cpus }}"
+    depends_on:
+      - redis
+      - database
+    restart: always
+    healthcheck:
+      disable: false
+
+  immich-machine-learning:
+    container_name: immich_machine_learning
+    image: "{{ immich_ml_image }}:{{ immich_version }}"
+    volumes:
+      - "immich_model-cache:/cache"
+    env_file:
+      - "{{ immich_config_dir }}/immich.env"
+    security_opt:
+      - "label=type:immich_ml.process"
+    mem_limit: "{{ immich_ml_memory }}"
+    cpus: "{{ immich_ml_cpus }}"
+    restart: always
+    healthcheck:
+      disable: false
+
+  redis:
+    container_name: immich_redis
+    image: "{{ immich_redis_image }}:9@sha256:3b55fbaa0cd93cf0d9d961f405e4dfcc70efe325e2d84da207a0a8e6d8fde4f9"
+    mem_limit: "{{ immich_redis_memory }}"
+    healthcheck:
+      test: redis-cli ping || exit 1
+    restart: always
+
+  database:
+    container_name: immich_postgres
+    image: "{{ immich_postgres_image }}:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23"
+
+    volumes:
+      - "{{ immich_postgres_dir }}:/var/lib/postgresql/data:Z"
+    command: >-
+      postgres
+      -c shared_buffers={{ immich_postgres_shared_buffers }}
+      -c max_connections={{ immich_postgres_max_connections }}
+    shm_size: 128mb
+    mem_limit: "{{ immich_postgres_memory }}"
+    restart: always
+    healthcheck:
+      disable: false
+
+volumes:
+  immich_model-cache:
