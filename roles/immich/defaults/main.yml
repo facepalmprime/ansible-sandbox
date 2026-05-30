@@ -1,0 +1,26 @@
+---
+immich_version: "v2.7.5"
+immich_server_image: "ghcr.io/immich-app/immich-server"
+immich_ml_image: "ghcr.io/immich-app/immich-machine-learning"
+immich_postgres_image: "ghcr.io/immich-app/postgres"
+immich_redis_image: "docker.io/valkey/valkey"
+
+immich_uid: 965
+immich_gid: 965
+
+immich_data_dir: /srv/immich
+immich_upload_dir: /srv/immich/uploads
+immich_postgres_dir: /srv/immich/postgres
+immich_config_dir: /etc/immich
+
+immich_http_port: 2283
+
+immich_server_memory: "2g"
+immich_server_cpus: "2.0"
+immich_ml_memory: "4g"
+immich_ml_cpus: "4.0"
+immich_postgres_memory: "1g"
+immich_postgres_shared_buffers: "128MB"
+immich_postgres_max_connections: "50"
+immich_redis_memory: "256m"
+immich_ca_dir: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca"

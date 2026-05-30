@@ -1,0 +1,6 @@
+---
+- name: Deploy Immich photo management
+  hosts: immich
+  become: true
+  roles:
+    - role: immich

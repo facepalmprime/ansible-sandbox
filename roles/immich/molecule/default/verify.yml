@@ -1,0 +1,34 @@
+---
+- name: Verify immich role (container-safe checks)
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Check /etc/immich directory exists
+      ansible.builtin.stat:
+        path: /etc/immich
+      register: immich_etc_dir
+
+    - name: Assert /etc/immich directory present
+      ansible.builtin.assert:
+        that:
+          - immich_etc_dir.stat.isdir
+        fail_msg: "/etc/immich was not created by the role"
+
+    - name: Check immich user exists
+      ansible.builtin.command:
+        cmd: getent passwd immich
+      register: immich_user
+      changed_when: false
+      failed_when: immich_user.rc != 0
+
+    - name: Check /srv/immich directory exists
+      ansible.builtin.stat:
+        path: /srv/immich
+      register: immich_srv_dir
+
+    - name: Assert /srv/immich present
+      ansible.builtin.assert:
+        that:
+          - immich_srv_dir.stat.exists
+          - immich_srv_dir.stat.isdir
+        fail_msg: "/srv/immich was not created by the role"
