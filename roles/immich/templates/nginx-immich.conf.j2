@@ -1,9 +1,21 @@
 server {
+    listen 80;
+    server_name immich.{{ ansible_hostname }};
+    return 301 https://$host$request_uri;
+}
+server {
     listen 443 ssl;
     server_name immich.{{ ansible_hostname }};
 
     ssl_certificate /etc/pki/tls/certs/immich.crt;
     ssl_certificate_key /etc/pki/tls/private/immich.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers EECDH+AESGCM:EDH+AESGCM;
+    ssl_prefer_server_ciphers on;
+
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+    add_header X-Frame-Options DENY always;
+    add_header X-Content-Type-Options nosniff always;
 
     client_max_body_size 50000M;
     proxy_read_timeout 600s;
