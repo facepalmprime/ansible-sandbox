@@ -13,6 +13,7 @@ services:
       - "127.0.0.1:{{ immich_http_port }}:2283"
     security_opt:
       - "label=type:immich_server.process"
+      - "no-new-privileges:true"
     mem_limit: "{{ immich_server_memory }}"
     cpus: "{{ immich_server_cpus }}"
     depends_on:
@@ -31,6 +32,7 @@ services:
       - "{{ immich_config_dir }}/immich.env"
     security_opt:
       - "label=type:immich_ml.process"
+      - "no-new-privileges:true"
     mem_limit: "{{ immich_ml_memory }}"
     cpus: "{{ immich_ml_cpus }}"
     restart: always
@@ -41,6 +43,8 @@ services:
     container_name: immich_redis
     image: "{{ immich_redis_image }}:9@sha256:3b55fbaa0cd93cf0d9d961f405e4dfcc70efe325e2d84da207a0a8e6d8fde4f9"
     mem_limit: "{{ immich_redis_memory }}"
+    security_opt:
+      - "no-new-privileges:true"
     healthcheck:
       test: redis-cli ping || exit 1
     restart: always
@@ -57,6 +61,8 @@ services:
       -c max_connections={{ immich_postgres_max_connections }}
     shm_size: 128mb
     mem_limit: "{{ immich_postgres_memory }}"
+    security_opt:
+      - "no-new-privileges:true"
     restart: always
     healthcheck:
       disable: false
