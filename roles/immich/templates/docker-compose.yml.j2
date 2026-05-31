@@ -14,6 +14,8 @@ services:
     security_opt:
       - "label=type:immich_server.process"
       - "no-new-privileges:true"
+    cap_drop:
+      - ALL
     mem_limit: "{{ immich_server_memory }}"
     cpus: "{{ immich_server_cpus }}"
     depends_on:
@@ -33,6 +35,8 @@ services:
     security_opt:
       - "label=type:immich_ml.process"
       - "no-new-privileges:true"
+    cap_drop:
+      - ALL
     mem_limit: "{{ immich_ml_memory }}"
     cpus: "{{ immich_ml_cpus }}"
     restart: always
@@ -45,6 +49,11 @@ services:
     mem_limit: "{{ immich_redis_memory }}"
     security_opt:
       - "no-new-privileges:true"
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID
+      - SETGID
     healthcheck:
       test: redis-cli ping || exit 1
     restart: always
@@ -63,6 +72,14 @@ services:
     mem_limit: "{{ immich_postgres_memory }}"
     security_opt:
       - "no-new-privileges:true"
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - FOWNER
+      - DAC_OVERRIDE
+      - SETUID
+      - SETGID
     restart: always
     healthcheck:
       disable: false

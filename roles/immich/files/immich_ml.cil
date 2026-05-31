@@ -1,6 +1,6 @@
 (block immich_ml
     (blockinherit container)
-    (allow process process ( capability ( chown dac_override fowner fsetid kill net_bind_service net_raw setfcap setgid setpcap setuid sys_chroot )))
+    (allow process process ( capability ( chown dac_override fowner fsetid net_bind_service setgid setuid )))
 
     (allow process container_file_t ( dir ( add_name create getattr ioctl lock open read remove_name rmdir search setattr write )))
     (allow process container_file_t ( file ( append create getattr ioctl lock map open read rename setattr unlink write )))

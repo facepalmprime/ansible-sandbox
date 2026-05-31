@@ -1,7 +1,7 @@
 (block immich_server
     (blockinherit container)
     (blockinherit restricted_net_container)
-    (allow process process ( capability ( chown dac_override fowner fsetid kill net_bind_service net_raw setfcap setgid setpcap setuid sys_chroot )))
+    (allow process process ( capability ( chown dac_override fowner fsetid net_bind_service setgid setuid )))
 
     (allow process unreserved_port_t ( tcp_socket (  name_bind )))
     (allow process locale_t ( dir ( getattr ioctl lock open read search )))
