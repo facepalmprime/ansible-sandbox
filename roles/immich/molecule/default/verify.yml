@@ -32,3 +32,17 @@
           - immich_srv_dir.stat.exists
           - immich_srv_dir.stat.isdir
         fail_msg: "/srv/immich was not created by the role"
+
+    - name: Check /srv/immich/model-cache directory exists
+      ansible.builtin.stat:
+        path: /srv/immich/model-cache
+      register: immich_ml_cache_dir
+
+    - name: Assert /srv/immich/model-cache present with correct owner
+      ansible.builtin.assert:
+        that:
+          - immich_ml_cache_dir.stat.exists
+          - immich_ml_cache_dir.stat.isdir
+          - immich_ml_cache_dir.stat.pw_name == "immich"
+          - immich_ml_cache_dir.stat.gr_name == "immich"
+        fail_msg: "/srv/immich/model-cache missing or wrong owner - expected immich:immich"

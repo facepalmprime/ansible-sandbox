@@ -25,6 +25,7 @@
     - "{{ immich_data_dir }}"
     - "{{ immich_upload_dir }}"
     - "{{ immich_config_dir }}"
+    - "{{ immich_ml_cache_dir }}"
 
 - name: Create immich postgres directory
   ansible.builtin.file:
@@ -84,6 +85,27 @@
     cmd: semodule -i /etc/immich/immich_ml.cil
   when: env_name != 'molecule'
   changed_when: true
+
+- name: Set SELinux fcontext for ML model cache directory
+  ansible.builtin.command:
+    cmd: semanage fcontext -a -t immich_ml_cache_t "{{ immich_ml_cache_dir }}(/.*)?"
+  when: env_name != 'molecule'
+  register: ml_fcontext
+  changed_when: >
+    'already defined' not in ml_fcontext.stdout and
+    'already defined' not in ml_fcontext.stderr
+  failed_when: >
+    ml_fcontext.rc != 0 and
+    'already defined' not in ml_fcontext.stdout and
+    'already defined' not in ml_fcontext.stderr
+
+- name: Apply SELinux fcontext to ML model cache directory
+  ansible.builtin.command:
+    cmd: restorecon -Rv {{ immich_ml_cache_dir }}
+  when: env_name != 'molecule'
+  changed_when: false
+  failed_when: false
+
 
 - name: Generate immich TLS private key
   community.crypto.openssl_privatekey:

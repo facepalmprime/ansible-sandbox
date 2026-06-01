@@ -29,7 +29,7 @@ services:
     container_name: immich_machine_learning
     image: "{{ immich_ml_image }}:{{ immich_version }}"
     volumes:
-      - "immich_model-cache:/cache"
+      - "{{ immich_ml_cache_dir }}:/cache"
     env_file:
       - "{{ immich_config_dir }}/immich.env"
     security_opt:
@@ -84,5 +84,3 @@ services:
     healthcheck:
       disable: false
 
-volumes:
-  immich_model-cache:
