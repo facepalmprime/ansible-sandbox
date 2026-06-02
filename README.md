@@ -98,6 +98,49 @@ from the start.
 Getting the pipeline green took longer than expected. Four separate failures stacked on
 each other across two sessions. The debugging section has the full write-up.
 
+### Self-Hosted Services
+
+With the infrastructure and CI/CD in place, I deployed four real services on top of it.
+Same workflow as everything before: write verify.yml first, write the role to make it
+pass, confirm zero changes on second run, deploy to dev before prod.
+
+**Pi-hole** — network-wide DNS ad-blocking. Every guide online was written for v5, which
+stores config in a simple key=value file. Pi-hole v6 replaced that entirely with a TOML
+format file in a different location. The v5 approach does nothing on v6. The fix was the
+capture-and-template pattern: install Pi-hole once on the dev node, capture the config it
+generates, sanitize it into a Jinja2 template, automate future installs from that. The
+installer also has an `--unattended` flag that only works if the config file already
+exists — so the role writes the template before running the installer.
+
+**Jellyfin** — self-hosted media server. This was the first custom SELinux policy in
+the project. Every containerized service that writes to host directories needs one —
+SELinux's default policy doesn't know about your `/srv/jellyfin`, so it denies access
+until you define the rules. I created two custom file types: `jellyfin_data_t` for
+config and cache (read/write), and `jellyfin_media_t` for the media library (read-only).
+The kernel enforces that split regardless of what the application or any attacker tries
+to do. Also established the UID pinning pattern here — without explicit UID pins,
+redeploys on different nodes silently get different UIDs, which breaks file ownership
+when you restore from backup.
+
+**Nextcloud** — self-hosted file sync and storage. Most complex role in the project:
+PHP-FPM, nginx, MariaDB, and Nextcloud's CLI management tool (`occ`) all working together.
+The non-obvious dependency: Rocky Linux's default PHP is too old for Nextcloud 30.x, so
+the role pulls PHP 8.3 from the Remi repository (GPG key imported first, then the release
+RPM — get the order wrong and yum refuses to install it). The `occ` CLI also needs the
+`php-process` package for its POSIX calls — not in Nextcloud's documented requirements,
+not pulled in automatically, and the web interface works fine without it, so it only shows
+up when you actually run an `occ` command.
+
+**Immich** — self-hosted photo and video management. Unlike the previous services, Immich
+is a four-container stack: application server, machine learning inference, PostgreSQL with
+vector extensions, and Redis. Orchestrated with Podman Compose. This introduced CIL policy
+authoring (newer than TE — no compilation step, loaded directly with `semodule -i`) and
+`udica` for generating first-draft policies from running containers. Before any prod
+deployment, a dedicated security hardening pass closed 10 findings: `no-new-privileges`
+on all containers, `cap_drop: ALL` with only empirically-proven caps added back, and a
+dedicated SELinux type (`immich_ml_cache_t`) scoping the ML container's write access to
+its own cache directory rather than all container storage on the host.
+
 ## Problems I Hit and How I Diagnosed Them
 
 This section exists because debugging is the actual job. These are real failures from
@@ -307,6 +350,134 @@ password in Woodpecker's secret store, inject it as an environment variable at r
 write it to the expected path before lint runs, delete it after. The password never
 touches the repo or the logs.
 
+---
+
+**Postgres container failing with permission denied — host UID vs container UID**
+
+The Immich Postgres container kept failing to start. `podman logs immich_postgres` showed:
+
+```
+initdb: error: could not change permissions of directory "/var/lib/postgresql/data"
+Permission denied
+```
+
+I had created a system user called `immich-postgres` with UID 966 and chowned the data
+directory to it. The container disagreed.
+
+Root cause: the official Postgres image runs its process as UID 999 internally. The
+container doesn't care about the host user I created — it cares about the UID of
+whoever owns the files in the bind mount. The host kernel checks whether the
+container's internal UID (999) owns the files. It didn't — UID 966 did.
+
+Diagnosed via: reading the image's Dockerfile in the vectorchord/pgvecto.rs repository
+to find the baked-in UID, then comparing it to `ls -lan /srv/immich/postgres/`.
+
+Fix: `chown -R 999:999 /srv/immich/postgres/` on the host, and removed the host user
+creation tasks from the role entirely. The host directory owned by UID 999 belongs to
+nobody on the host — that's fine. Only the Postgres container should ever touch it.
+
+Key lesson: when a container image has a baked-in UID (Postgres, Redis, and many
+official images do), you don't create a host user. You chown the data directory to
+the container's internal UID.
+
+---
+
+**SELinux blocking container bind mounts — the :Z flag**
+
+After fixing the UID issue, the Postgres container was still being blocked. AVC denials
+in `/var/log/audit/audit.log` showed the container process couldn't write to the data
+directory even though ownership was correct.
+
+Root cause: SELinux was checking the file label on the host directory, not just the
+owner. The directory had a label that the container process type wasn't allowed to
+write. Ownership is a DAC (discretionary access control) check. SELinux is a MAC
+(mandatory access control) check. They're independent — you can pass the ownership
+check and still fail the SELinux check.
+
+Fix: the `:Z` flag on the volume mount in `docker-compose.yml`:
+
+```yaml
+volumes:
+  - "{{ immich_postgres_dir }}:/var/lib/postgresql/data:Z"
+```
+
+`:Z` tells Podman to relabel the host directory with a private label that only this
+container is allowed to access. Podman handles the label automatically.
+
+One catch: `:Z` only works with the short volume notation (a string). If you use the
+long YAML dict form (`type`/`source`/`target` keys), Podman silently ignores the flag.
+Found this by checking `podman inspect` and seeing no SELinux options applied — the
+compose file looked right but the flag wasn't taking effect.
+
+---
+
+**SELinux AVC denials appearing in waves**
+
+Each time I fixed an AVC denial and restarted the affected container, the AVC count
+would stabilize — then climb again 60 seconds later when the application reached a
+different code path.
+
+The instinct is to declare success after the immediate denial stops. The correct
+approach: wait the full minute, then run the count twice with `sleep 30` between,
+comparing the two numbers. If they're identical, the policy is stable. If the second
+is higher, there's another denial being generated by a less frequently executed path.
+
+This is a general pattern for any iterative SELinux debugging: you're chasing the
+application's execution paths, not a single static rule. The AVC log tells you exactly
+what was denied — process type, file type, permission class — which is unusually clear
+as far as error messages go. Each denial is a one-line addition to the CIL policy.
+
+---
+
+**SELinux label not updating after policy change — restorecon needs -F**
+
+After rewriting the ML container's CIL policy to use a dedicated `immich_ml_cache_t`
+type, the model-cache directory still showed the old `container_file_t` label even
+after `semanage fcontext` had been updated and `restorecon -Rv` had been run.
+
+Root cause: `restorecon` without `-F` only relabels files that "don't match" the policy.
+If the filesystem extended attribute is present — even with the wrong value — restorecon
+considers the label "already handled" and skips it.
+
+`restorecon -F` forces a relabel regardless of the existing attribute. After adding `-F`,
+the directory showed `immich_ml_cache_t` as expected.
+
+Symptom: `ls -laZ /srv/immich/` showed the old label even after the policy was updated
+and `restorecon` had reported it ran successfully. The `-v` flag on restorecon shows
+which files it actually changed — when it reports no files changed on a freshly updated
+policy, `-F` is usually the fix.
+
+---
+
+**node1 drive failure mid-project — real infrastructure dies on its own schedule**
+
+Partway through building out the self-hosted services, node1 started throwing kernel errors mid-session. `smartctl`
+confirmed the culprit: a Toshiba DT01ACA100 with 104 pending and uncorrectable sectors
+and swap write errors. It eventually hit a `blk_update_request` kernel panic.
+
+Quick note on the `Seek_Error_Rate FAILING_NOW` flag — on Toshiba drives that's a
+known false positive. Their internal units don't map to the standard scale and it reads
+as critical when it isn't. The pending sectors, though, are real.
+
+While the drive was still talking, I:
+
+1. Ran `smartctl -a /dev/sda` and `dmesg | grep -i error` to confirm what I was actually dealing with
+2. Copied `/etc`, `/home`, `/srv`, and both VM disk images (node3 13GB, node4 4GB) to node2 over SSH before things got worse
+3. Booted to a live USB, mounted LVM read-only, confirmed the backup was intact
+4. Pushed everything in-progress to GitHub before Gitea — which runs on node1 — went dark
+
+Nothing was lost. The whole point of keeping everything in a git repo and running Ansible
+from a separate control node is exactly this — the lab can be rebuilt from scratch on
+new hardware with `ansible-playbook`. The backup is insurance; the repo is the recovery procedure.
+
+In the meantime, work continues on node5 (Ubuntu 22.04 VM on node2). The plan is to
+extend the existing service roles to support Ubuntu — the `common` role already handles
+both OS families, and the service roles are the natural next step. That gets services
+running on node5 without waiting for new hardware. The other priority is writing a
+recovery playbook: bootstrap a fresh OS, restore `/srv` from the node2 backup,
+re-provision the VMs — so the day the replacement drive arrives, the lab comes back up
+without any manual steps.
+
 ## Security Hardening
 
 Before deploying any public-facing services I ran through CIS benchmarks section by
@@ -327,6 +498,24 @@ section and fixed what came up. The changes:
 - **Separate SSH keys** — the ansible service account uses a dedicated ed25519 key.
   Rotating automation credentials doesn't affect interactive access and vice versa.
 
+For the containerized services, a second layer of hardening on top of the infrastructure baseline:
+
+- **Custom SELinux policies** — every containerized service has its own CIL or TE policy
+  file that defines exactly what it's allowed to do at the kernel level. Jellyfin has two
+  types: read/write access to its own data, read-only access to the media library. The
+  Immich ML container has a dedicated `immich_ml_cache_t` type scoping its writes to its
+  own cache directory only. If a container is compromised, SELinux limits what it can
+  actually reach.
+- **`cap_drop: ALL` with empirical adds** — all capabilities stripped first, deployed to
+  the dev node, observed what the AVC log reported as denied, added back only what the
+  audit log proved was needed. Immich dropped `net_raw`, `setfcap`, `setpcap`, `sys_chroot`,
+  and `kill` entirely. CIS Benchmark 5.3.
+- **`no-new-privileges`** on every container — prevents privilege escalation inside a
+  running process. Even if an attacker gains code execution and tries to run a setuid
+  binary, the kernel rejects it. CIS Benchmark 5.4.
+- **Pinned image digests** — container images referenced by SHA256 digest, not just tag.
+  Tags are mutable; a digest pins the exact image layer.
+
 One thing that didn't go as planned: scoping the ansible service account's sudoers
 to specific commands. Ansible's pipelining model executes modules via `sudo /bin/sh`,
 which makes command-level scoping equivalent to `NOPASSWD: ALL` in practice — you'd
@@ -336,9 +525,10 @@ At least I'll know if something weird happens.
 
 **On the vault password file.** `ansible.cfg` sets `vault_password_file = secret.txt`.
 That's a plaintext file on the control node, mode 0600, gitignored. If someone gets
-to the control node, vault is broken. In prod, pull the password from HashiCorp Vault
-or SSM at runtime. For a home lab where the threat is physical access to one machine,
-0600 and gitignore is the call.
+to the control node, vault is broken. In this environment the realistic threat is
+physical access to the control node — 0600 and gitignore is the call. On a shared or
+cloud-hosted control node, pull the password from HashiCorp Vault or SSM at runtime
+instead.
 
 ## Engineering Practices
 
@@ -366,18 +556,24 @@ ansible-sandbox/
 │   └── prod/       # node1 (Rocky 8.9 physical — real services)
 ├── roles/
 │   ├── bootstrap/   # service account creation (one-shot, Molecule verified)
-│   ├── common/      # hardened baseline — all nodes, all environments
-│   ├── mariadb/     # MariaDB install + gitea DB/user — TDD, Molecule tested
-│   ├── gitea/       # Gitea binary deploy, systemd, SELinux, firewalld, vault secrets
-│   └── woodpecker/  # Woodpecker CI server + agent — binary deploy, systemd, podman backend
+│   ├── common/      # hardened baseline — all nodes, both OS families
+│   ├── mariadb/     # MariaDB install + database/user provisioning
+│   ├── gitea/       # Gitea binary deploy, systemd, SELinux, TLS, vault secrets
+│   ├── woodpecker/  # Woodpecker CI server + agent — binary deploy, podman backend
+│   ├── pihole/      # Pi-hole v6 DNS sinkhole — capture-and-template pattern
+│   ├── jellyfin/    # Jellyfin media server — SELinux TE policy, PKCS12 TLS
+│   ├── nextcloud/   # Nextcloud — PHP-FPM, nginx, MariaDB, occ idempotency
+│   └── immich/      # Immich photo stack — Podman Compose, CIL policy, hardened
 ├── playbooks/
 │   ├── bootstrap.yml
 │   ├── common.yml
 │   ├── assert_common.yml
 │   ├── deploy_gitea.yml
-│   ├── assert_gitea.yml
 │   ├── deploy_woodpecker.yml
-│   └── assert_woodpecker.yml
+│   ├── deploy_pihole.yml
+│   ├── deploy_jellyfin.yml
+│   ├── deploy_nextcloud.yml
+│   └── deploy_immich.yml
 ├── .woodpecker.yml                  (pipeline definition — ansible-lint on push)
 └── collections/
     └── requirements.yml
@@ -402,19 +598,45 @@ cd roles/common && molecule test
 
 ## What's Next
 
-The lab is still running. A few things left on the roadmap:
+The lab is still running. node1 is down with a drive failure — see the incident entry
+above for the full write-up.
 
-- **Self-hosted services** — Pi-hole for DNS filtering, Jellyfin for media, Nextcloud
-  for file sync. Same TDD pattern as everything else — Molecule green before it touches
-  a real node. If the playbook doesn't do it, it doesn't happen.
-- **Chaos engineering** — node2's wifi drops periodically and I've never properly fixed it.
-  It's been useful for finding out what actually breaks. Eventually I want structured
-  failure injection rather than just waiting for the wifi to die.
-- **Red Hat ecosystem depth** — building toward more Red Hat certifications on real
-  hardware rather than a sandboxed exam environment.
-- **Kubernetes** — I want to go deeper and this is the hardware to do it on. Small
-  cluster, managed by Ansible, figure out where the automation model breaks down.
-- **Terraform** — bare-metal is covered, cloud provisioning isn't. That's the next gap.
+**While node1 is down:**
+
+- **Cross-distro service deployment** — the existing service roles (Pi-hole, Jellyfin,
+  Nextcloud, Immich) are Rocky-only right now. Extending them to support Ubuntu means
+  the same playbook runs on node5 without changes — package names, firewall, and config
+  paths vary by OS family, the role logic doesn't. The `common` role already does this;
+  the service roles are the obvious next step. Gets services running on node5 immediately
+  and makes every role more useful to anyone cloning the repo.
+- **Node1 recovery playbook** — I have the full backup on node2 and every service
+  already automated. Writing `recover_node1.yml` that bootstraps a fresh OS, restores
+  `/srv` from the backup, and re-provisions the VMs is Ansible doing exactly what Ansible
+  is for. The goal is to run it the day the replacement drive arrives and have the lab
+  back up without touching anything manually.
+- **Local housekeeping** — ansible-lint upgrade from 6.22.2 to 26.4.0 (long deferred),
+  and fixing the Immich stack so it survives a reboot. Neither needs a node.
+
+**Once node1 is restored:**
+
+- **Run the recovery playbook** — prove it actually works against real hardware, not
+  just in theory.
+- **Immich prod deploy** — the role has passed molecule and all local gate checks.
+  Final live verification on node3, then it goes to prod.
+- **Chaos engineering** — node2's wifi has been dropping since day one and I've been
+  treating it as a feature. Time to make that intentional: structured failure injection,
+  not just waiting for the wifi to die at a convenient moment.
+
+**Further out:**
+
+- **Terraform + cloud** — once the on-prem foundation is complete this is the natural
+  next step. Terraform provisions a cloud VM, Ansible configures it with the same roles
+  that run here, dynamic inventory replaces the static hosts file. The patterns don't
+  change; the target does.
+- **Kubernetes** — k3s on node1's VMs, Ansible-managed, find out where the automation
+  model starts to show its limits.
+- **Terraform on-prem** — provision local VMs through Terraform, configure through
+  Ansible. Full IaC stack from the ground up.
 
 ## Certifications
 
@@ -422,6 +644,7 @@ The lab is still running. A few things left on the roadmap:
 
 ## Tech Stack
 
-Ansible · Rocky Linux 8.9 · Ubuntu 22.04 · KVM/libvirt · Molecule · Podman ·
-ansible-vault · ansible-lint · MariaDB · Gitea · Woodpecker CI · firewalld · ufw · SELinux · chrony · Python 3
+Ansible · Rocky Linux 8.9 · Ubuntu 22.04 · KVM/libvirt · Molecule · Podman · Podman Compose ·
+ansible-vault · ansible-lint · MariaDB · Gitea · Woodpecker CI · Pi-hole · Jellyfin · Nextcloud · Immich ·
+nginx · PHP-FPM · firewalld · ufw · SELinux (CIL + TE policy authoring) · chrony · Python 3
 
