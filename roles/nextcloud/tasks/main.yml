@@ -131,9 +131,9 @@
 - name: Add SELinux fcontext for web root
   ansible.builtin.command:
     cmd: "semanage fcontext -a -t httpd_sys_rw_content_t '{{ nextcloud_web_root }}(/.*)?'"
-  register: fcontext_webroot
-  changed_when: fcontext_webroot.rc == 0 and 'already defined' not in fcontext_webroot.stderr
-  failed_when: fcontext_webroot.rc != 0 and 'already defined' not in fcontext_webroot.stderr
+  register: nextcloud_fcontext_webroot
+  changed_when: nextcloud_fcontext_webroot.rc == 0 and 'already defined' not in nextcloud_fcontext_webroot.stderr
+  failed_when: nextcloud_fcontext_webroot.rc != 0 and 'already defined' not in nextcloud_fcontext_webroot.stderr
   when:
     - env_name != 'molecule'
     - ansible_selinux.status == 'enabled'
@@ -141,9 +141,9 @@
 - name: Add SELinux fcontext for data directory
   ansible.builtin.command:
     cmd: "semanage fcontext -a -t httpd_sys_rw_content_t '{{ nextcloud_data_dir }}(/.*)?'"
-  register: fcontext_data
-  changed_when: fcontext_data.rc == 0 and 'already defined' not in fcontext_data.stderr
-  failed_when: fcontext_data.rc != 0 and 'already defined' not in fcontext_data.stderr
+  register: nextcloud_fcontext_data
+  changed_when: nextcloud_fcontext_data.rc == 0 and 'already defined' not in nextcloud_fcontext_data.stderr
+  failed_when: nextcloud_fcontext_data.rc != 0 and 'already defined' not in nextcloud_fcontext_data.stderr
   when:
     - env_name != 'molecule'
     - ansible_selinux.status == 'enabled'
@@ -151,9 +151,9 @@
 - name: Add SELinux fcontext for session directory
   ansible.builtin.command:
     cmd: "semanage fcontext -a -t httpd_sys_rw_content_t '{{ nextcloud_session_dir }}(/.*)?'"
-  register: fcontext_session
-  changed_when: fcontext_session.rc == 0 and 'already defined' not in fcontext_session.stderr
-  failed_when: fcontext_session.rc != 0 and 'already defined' not in fcontext_session.stderr
+  register: nextcloud_fcontext_session
+  changed_when: nextcloud_fcontext_session.rc == 0 and 'already defined' not in nextcloud_fcontext_session.stderr
+  failed_when: nextcloud_fcontext_session.rc != 0 and 'already defined' not in nextcloud_fcontext_session.stderr
   when:
     - env_name != 'molecule'
     - ansible_selinux.status == 'enabled'
@@ -161,9 +161,9 @@
 - name: Apply SELinux fcontext labels
   ansible.builtin.command:
     cmd: "restorecon -Rv {{ nextcloud_web_root }} {{ nextcloud_data_dir }} {{ nextcloud_session_dir }}"
-  register: restorecon_result
-  changed_when: restorecon_result.stdout | length > 0
-  failed_when: restorecon_result.rc != 0 and 'No such file' not in restorecon_result.stderr
+  register: nextcloud_restorecon_result
+  changed_when: nextcloud_restorecon_result.stdout | length > 0
+  failed_when: nextcloud_restorecon_result.rc != 0 and 'No such file' not in nextcloud_restorecon_result.stderr
   when:
     - env_name != 'molecule'
     - ansible_selinux.status == 'enabled'
@@ -261,9 +261,9 @@
 - name: Add SELinux port label for 443
   ansible.builtin.command:
     cmd: semanage port -a -t http_port_t -p tcp 443
-  register: semanage_443
-  changed_when: "'already defined' not in semanage_443.stdout and 'already defined' not in semanage_443.stderr"
-  failed_when: semanage_443.rc != 0 and 'already defined' not in semanage_443.stderr
+  register: nextcloud_semanage_443
+  changed_when: "'already defined' not in nextcloud_semanage_443.stdout and 'already defined' not in nextcloud_semanage_443.stderr"
+  failed_when: nextcloud_semanage_443.rc != 0 and 'already defined' not in nextcloud_semanage_443.stderr
   when:
     - env_name != 'molecule'
     - ansible_selinux.status == 'enabled'
@@ -279,7 +279,7 @@
 - name: Check if Nextcloud is already installed
   ansible.builtin.stat:
     path: "{{ nextcloud_web_root }}/config/config.php"
-  register: nc_config
+  register: nextcloud_nc_config
   when: env_name != 'molecule'
 
 - name: Run occ maintenance:install
@@ -302,7 +302,7 @@
   changed_when: true
   when:
     - env_name != 'molecule'
-    - not nc_config.stat.exists
+    - not nextcloud_nc_config.stat.exists
 
 - name: Get current trusted domains
   ansible.builtin.command:
@@ -311,7 +311,7 @@
     chdir: "{{ nextcloud_web_root }}"
   become: true
   become_user: nextcloud
-  register: current_trusted_domains
+  register: nextcloud_current_trusted_domains
   changed_when: false
   failed_when: false
   when: env_name != 'molecule'
@@ -329,7 +329,7 @@
     index_var: idx
   when:
     - env_name != 'molecule'
-    - item not in (current_trusted_domains.stdout | default(''))
+    - item not in (nextcloud_current_trusted_domains.stdout | default(''))
 
 - name: Get current overwrite.cli.url
   ansible.builtin.command:
@@ -338,7 +338,7 @@
     chdir: "{{ nextcloud_web_root }}"
   become: true
   become_user: nextcloud
-  register: current_overwrite_url
+  register: nextcloud_current_overwrite_url
   changed_when: false
   failed_when: false
   when: env_name != 'molecule'
@@ -353,7 +353,7 @@
   changed_when: true
   when:
     - env_name != 'molecule'
-    - (current_overwrite_url.stdout | default('') | trim) != nextcloud_overwrite_cli_url
+    - (nextcloud_current_overwrite_url.stdout | default('') | trim) != nextcloud_overwrite_cli_url
 
 - name: Get current default phone region
   ansible.builtin.command:
@@ -362,7 +362,7 @@
     chdir: "{{ nextcloud_web_root }}"
   become: true
   become_user: nextcloud
-  register: current_phone_region
+  register: nextcloud_current_phone_region
   changed_when: false
   failed_when: false
   when: env_name != 'molecule'
@@ -377,7 +377,7 @@
   changed_when: true
   when:
     - env_name != 'molecule'
-    - (current_phone_region.stdout | default('') | trim) != nextcloud_default_phone_region
+    - (nextcloud_current_phone_region.stdout | default('') | trim) != nextcloud_default_phone_region
 
 - name: Enforce system_u on occ-generated config files
   ansible.builtin.command:
@@ -390,7 +390,7 @@
 - name: Count AVC denials in audit.log
   ansible.builtin.command:
     cmd: grep -c 'denied' /var/log/audit/audit.log
-  register: avc_count
+  register: nextcloud_avc_count
   changed_when: false
   failed_when: false
   when: env_name != 'molecule'
@@ -398,9 +398,9 @@
 - name: Report AVC count
   ansible.builtin.debug:
     msg: >
-      AVC denial count: {{ avc_count.stdout }}.
+      AVC denial count: {{ nextcloud_avc_count.stdout }}.
       If non-zero: sudo grep 'denied' /var/log/audit/audit.log | grep -E 'httpd|php'
       Do NOT disable SELinux - fix the seboolean or fcontext.
   when:
     - env_name != 'molecule'
-    - avc_count.stdout is defined
+    - nextcloud_avc_count.stdout is defined

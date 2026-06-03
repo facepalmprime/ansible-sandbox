@@ -14,19 +14,19 @@
     - name: Check SSL directory exists
       ansible.builtin.stat:
         path: /etc/nginx/ssl
-      register: ssl_dir
+      register: nginx_ssl_dir
 
     - name: Assert SSL directory exists
       ansible.builtin.assert:
-        that: ssl_dir.stat.exists
+        that: nginx_ssl_dir.stat.exists
         fail_msg: "nginx SSL directory not found"
 
     - name: Check proxy config exists
       ansible.builtin.stat:
         path: /etc/nginx/conf.d/woodpecker-proxy.conf
-      register: proxy_conf
+      register: nginx_proxy_conf
 
     - name: Assert proxy config exists
       ansible.builtin.assert:
-        that: proxy_conf.stat.exists
+        that: nginx_proxy_conf.stat.exists
         fail_msg: "Woodpecker proxy config not found"

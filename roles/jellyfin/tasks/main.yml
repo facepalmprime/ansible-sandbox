@@ -53,9 +53,9 @@
 - name: Add container storage fcontext rule
   ansible.builtin.command:
     cmd: semanage fcontext -a -t container_file_t '/var/lib/containers/storage(/.*)?'
-  register: fcontext_add
-  changed_when: fcontext_add.rc == 0 and 'already defined' not in fcontext_add.stderr
-  failed_when: fcontext_add.rc != 0 and 'already defined' not in fcontext_add.stderr
+  register: jellyfin_fcontext_add
+  changed_when: jellyfin_fcontext_add.rc == 0 and 'already defined' not in jellyfin_fcontext_add.stderr
+  failed_when: jellyfin_fcontext_add.rc != 0 and 'already defined' not in jellyfin_fcontext_add.stderr
   when: env_name != 'molecule'
 
 - name: Apply container storage fcontext labels
@@ -67,33 +67,33 @@
 - name: Add jellyfin config fcontext rule
   ansible.builtin.command:
     cmd: semanage fcontext -a -t jellyfin_data_t '/etc/jellyfin(/.*)?'
-  register: fcontext_config
-  changed_when: fcontext_config.rc == 0 and 'already defined' not in fcontext_config.stderr
-  failed_when: fcontext_config.rc != 0 and 'already defined' not in fcontext_config.stderr
+  register: jellyfin_fcontext_config
+  changed_when: jellyfin_fcontext_config.rc == 0 and 'already defined' not in jellyfin_fcontext_config.stderr
+  failed_when: jellyfin_fcontext_config.rc != 0 and 'already defined' not in jellyfin_fcontext_config.stderr
   when: env_name != 'molecule'
 
 - name: Add jellyfin cache fcontext rule
   ansible.builtin.command:
     cmd: semanage fcontext -a -t jellyfin_data_t '/var/cache/jellyfin(/.*)?'
-  register: fcontext_cache
-  changed_when: fcontext_cache.rc == 0 and 'already defined' not in fcontext_cache.stderr
-  failed_when: fcontext_cache.rc != 0 and 'already defined' not in fcontext_cache.stderr
+  register: jellyfin_fcontext_cache
+  changed_when: jellyfin_fcontext_cache.rc == 0 and 'already defined' not in jellyfin_fcontext_cache.stderr
+  failed_when: jellyfin_fcontext_cache.rc != 0 and 'already defined' not in jellyfin_fcontext_cache.stderr
   when: env_name != 'molecule'
 
 - name: Apply jellyfin fcontext labels
   ansible.builtin.command:
     cmd: restorecon -Rv /etc/jellyfin /var/cache/jellyfin /srv/media
-  register: restorecon_result
+  register: jellyfin_restorecon_result
   changed_when: false
-  failed_when: restorecon_result.rc != 0 and 'No such file or directory' not in restorecon_result.stderr
+  failed_when: jellyfin_restorecon_result.rc != 0 and 'No such file or directory' not in jellyfin_restorecon_result.stderr
   when: env_name != 'molecule'
 
 - name: Add jellyfin media fcontext rule
   ansible.builtin.command:
     cmd: semanage fcontext -a -t jellyfin_media_t '/srv/media(/.*)?'
-  register: fcontext_media
-  changed_when: fcontext_media.rc == 0 and 'already defined' not in fcontext_media.stderr
-  failed_when: fcontext_media.rc != 0 and 'already defined' not in fcontext_media.stderr
+  register: jellyfin_fcontext_media
+  changed_when: jellyfin_fcontext_media.rc == 0 and 'already defined' not in jellyfin_fcontext_media.stderr
+  failed_when: jellyfin_fcontext_media.rc != 0 and 'already defined' not in jellyfin_fcontext_media.stderr
   when: env_name != 'molecule'
 
 - name: Create jellyfin group
@@ -243,15 +243,15 @@
 - name: Check for SELinux AVC denials related to jellyfin
   ansible.builtin.command:
     cmd: ausearch -m avc -ts recent -c jellyfin
-  register: selinux_avc
+  register: jellyfin_selinux_avc
   changed_when: false
   failed_when: false
   when: env_name != 'molecule'
 
 - name: Report any SELinux denials for jellyfin
   ansible.builtin.debug:
-    msg: "SELinux AVC denials for jellyfin - review before proceeding: {{ selinux_avc.stdout }}"
+    msg: "SELinux AVC denials for jellyfin - review before proceeding: {{ jellyfin_selinux_avc.stdout }}"
   when:
     - env_name != 'molecule'
-    - selinux_avc.rc == 0
-    - selinux_avc.stdout | length > 0
+    - jellyfin_selinux_avc.rc == 0
+    - jellyfin_selinux_avc.stdout | length > 0

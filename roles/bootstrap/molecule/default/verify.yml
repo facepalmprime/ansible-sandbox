@@ -7,61 +7,61 @@
   tasks:
     - name: Check ansible user exists
       ansible.builtin.command: id ansible
-      register: user_check
+      register: bootstrap_user_check
       changed_when: false
-      failed_when: user_check.rc != 0
+      failed_when: bootstrap_user_check.rc != 0
 
     - name: Check /etc/sudoers.d/ansible exists
       ansible.builtin.stat:
         path: /etc/sudoers.d/ansible
-      register: sudo_file
+      register: bootstrap_sudo_file
 
     - name: Assert sudoers file exists with correct permissions
       ansible.builtin.assert:
         that:
-          - sudo_file.stat.exists
-          - sudo_file.stat.mode == '0440'
+          - bootstrap_sudo_file.stat.exists
+          - bootstrap_sudo_file.stat.mode == '0440'
         fail_msg: "/etc/sudoers.d/ansible missing or wrong permissions"
 
     - name: Check sudoers has audit logging configured
       ansible.builtin.command:
         cmd: 'grep -c "logfile=" /etc/sudoers.d/ansible'
-      register: log_count
+      register: bootstrap_log_count
       changed_when: false
-      failed_when: log_count.stdout | int == 0
+      failed_when: bootstrap_log_count.stdout | int == 0
 
     - name: Check /home/ansible/.ssh directory exists
       ansible.builtin.stat:
         path: /home/ansible/.ssh
-      register: ssh_dir
+      register: bootstrap_ssh_dir
 
     - name: Assert .ssh directory has correct permissions
       ansible.builtin.assert:
         that:
-          - ssh_dir.stat.exists
-          - ssh_dir.stat.mode == '0700'
+          - bootstrap_ssh_dir.stat.exists
+          - bootstrap_ssh_dir.stat.mode == '0700'
         fail_msg: "/home/ansible/.ssh missing or wrong permissions"
 
     - name: Check authorized_keys file exists
       ansible.builtin.stat:
         path: /home/ansible/.ssh/authorized_keys
-      register: auth_keys
+      register: bootstrap_auth_keys
 
     - name: Assert authorized_keys exists
       ansible.builtin.assert:
         that:
-          - auth_keys.stat.exists
+          - bootstrap_auth_keys.stat.exists
         fail_msg: "/home/ansible/.ssh/authorized_keys missing"
 
     - name: Verify ansible user password is locked
       ansible.builtin.command: getent shadow ansible
-      register: shadow_entry
+      register: bootstrap_shadow_entry
       changed_when: false
 
     - name: Assert password field shows locked status
       ansible.builtin.assert:
         that:
-          - "shadow_entry.stdout.split(':')[1][0] in ['!', '*']"
+          - "bootstrap_shadow_entry.stdout.split(':')[1][0] in ['!', '*']"
         fail_msg: >-
           ansible user password is not locked.
-          Shadow entry: {{ shadow_entry.stdout }}
+          Shadow entry: {{ bootstrap_shadow_entry.stdout }}

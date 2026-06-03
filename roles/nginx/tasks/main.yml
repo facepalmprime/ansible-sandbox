@@ -49,9 +49,9 @@
 - name: Add SELinux port context for nginx proxy port
   ansible.builtin.command:
     cmd: semanage port -a -t http_port_t -p tcp {{ nginx_woodpecker_proxy_port }}
-  register: semanage_result
-  changed_when: "'already defined' not in semanage_result.stdout and 'already defined' not in semanage_result.stderr"
-  failed_when: semanage_result.rc != 0 and 'already defined' not in semanage_result.stderr
+  register: nginx_semanage_result
+  changed_when: "'already defined' not in nginx_semanage_result.stdout and 'already defined' not in nginx_semanage_result.stderr"
+  failed_when: nginx_semanage_result.rc != 0 and 'already defined' not in nginx_semanage_result.stderr
   when: ansible_selinux.status == 'enabled'
 
 - name: Open nginx proxy port in firewalld

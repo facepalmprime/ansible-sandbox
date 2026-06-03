@@ -21,16 +21,16 @@
     - name: Check /srv/media directory
       ansible.builtin.stat:
         path: /srv/media
-      register: media_dir
+      register: jellyfin_media_dir
 
     - name: Assert /srv/media ownership and permissions
       ansible.builtin.assert:
         that:
-          - media_dir.stat.exists
-          - media_dir.stat.isdir
-          - media_dir.stat.pw_name == 'jellyfin'
-          - media_dir.stat.gr_name == 'jellyfin'
-          - media_dir.stat.mode == "0755"
+          - jellyfin_media_dir.stat.exists
+          - jellyfin_media_dir.stat.isdir
+          - jellyfin_media_dir.stat.pw_name == 'jellyfin'
+          - jellyfin_media_dir.stat.gr_name == 'jellyfin'
+          - jellyfin_media_dir.stat.mode == "0755"
         fail_msg: "/srv/media missing, wrong owner, or wrong permissions"
 
     - name: Check Jellyfin systemd service file exists

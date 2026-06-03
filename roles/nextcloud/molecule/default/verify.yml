@@ -25,51 +25,51 @@
     - name: Check /var/www/nextcloud directory exists
       ansible.builtin.stat:
         path: /var/www/nextcloud
-      register: nc_webroot
+      register: nextcloud_nc_webroot
 
     - name: Assert web root present
       ansible.builtin.assert:
         that:
-          - nc_webroot.stat.exists
-          - nc_webroot.stat.isdir
+          - nextcloud_nc_webroot.stat.exists
+          - nextcloud_nc_webroot.stat.isdir
         fail_msg: "/var/www/nextcloud not created - check ansible.builtin.file task"
 
     - name: Check /srv/nextcloud data directory exists
       ansible.builtin.stat:
         path: /srv/nextcloud
-      register: nc_datadir
+      register: nextcloud_nc_datadir
 
     - name: Assert data directory present
       ansible.builtin.assert:
         that:
-          - nc_datadir.stat.exists
-          - nc_datadir.stat.isdir
+          - nextcloud_nc_datadir.stat.exists
+          - nextcloud_nc_datadir.stat.isdir
         fail_msg: "/srv/nextcloud not created - check ansible.builtin.file task"
 
     - name: Check PHP-FPM pool config deployed
       ansible.builtin.stat:
         path: /etc/php-fpm.d/nextcloud.conf
-      register: nc_fpm
+      register: nextcloud_nc_fpm
 
     - name: Assert PHP-FPM pool config present
       ansible.builtin.assert:
-        that: nc_fpm.stat.exists
+        that: nextcloud_nc_fpm.stat.exists
         fail_msg: "/etc/php-fpm.d/nextcloud.conf not deployed"
 
     - name: Check nginx vhost config deployed
       ansible.builtin.stat:
         path: /etc/nginx/conf.d/nextcloud.conf
-      register: nc_nginx
+      register: nextcloud_nc_nginx
 
     - name: Assert nginx vhost present
       ansible.builtin.assert:
-        that: nc_nginx.stat.exists
+        that: nextcloud_nc_nginx.stat.exists
         fail_msg: "/etc/nginx/conf.d/nextcloud.conf not deployed"
 
     - name: Confirm no unrendered Jinja2 vars in nginx config
       ansible.builtin.command:
         cmd: grep -c "vault_" /etc/nginx/conf.d/nextcloud.conf
-      register: secret_leak
+      register: nextcloud_secret_leak
       changed_when: false
-      failed_when: secret_leak.rc == 0
-      when: nc_nginx.stat.exists
+      failed_when: nextcloud_secret_leak.rc == 0
+      when: nextcloud_nc_nginx.stat.exists

@@ -54,7 +54,7 @@
 - name: Check loaded SELinux modules at priority 350
   ansible.builtin.command:
     cmd: semodule -lfull
-  register: semodule_list
+  register: immich_semodule_list
   changed_when: false
   when: env_name != 'molecule'
 
@@ -63,7 +63,7 @@
     cmd: semodule -X 350 -i /usr/share/udica/templates/base_container.cil
   when:
     - env_name != 'molecule'
-    - "'base_container' not in semodule_list.stdout"
+    - "'base_container' not in immich_semodule_list.stdout"
   changed_when: true
 
 - name: Load udica net_container template at priority 350
@@ -71,7 +71,7 @@
     cmd: semodule -X 350 -i /usr/share/udica/templates/net_container.cil
   when:
     - env_name != 'molecule'
-    - "'net_container' not in semodule_list.stdout"
+    - "'net_container' not in immich_semodule_list.stdout"
   changed_when: true
 
 - name: Load immich_server SELinux policy
@@ -90,14 +90,14 @@
   ansible.builtin.command:
     cmd: semanage fcontext -a -t immich_ml_cache_t "{{ immich_ml_cache_dir }}(/.*)?"
   when: env_name != 'molecule'
-  register: ml_fcontext
+  register: immich_ml_fcontext
   changed_when: >
-    'already defined' not in ml_fcontext.stdout and
-    'already defined' not in ml_fcontext.stderr
+    'already defined' not in immich_ml_fcontext.stdout and
+    'already defined' not in immich_ml_fcontext.stderr
   failed_when: >
-    ml_fcontext.rc != 0 and
-    'already defined' not in ml_fcontext.stdout and
-    'already defined' not in ml_fcontext.stderr
+    immich_ml_fcontext.rc != 0 and
+    'already defined' not in immich_ml_fcontext.stdout and
+    'already defined' not in immich_ml_fcontext.stderr
 
 - name: Apply SELinux fcontext to ML model cache directory
   ansible.builtin.command:
@@ -193,14 +193,14 @@
 - name: Check for AVC denials for immich
   ansible.builtin.command:
     cmd: grep -c 'immich.*denied\|denied.*immich' /var/log/audit/audit.log
-  register: avc_check
+  register: immich_avc_check
   changed_when: false
   failed_when: false
   when: env_name != 'molecule'
 
 - name: Report AVC denials if found
   ansible.builtin.debug:
-    msg: "WARNING: {{ avc_check.stdout }} AVC denials found for immich - check audit.log"
+    msg: "WARNING: {{ immich_avc_check.stdout }} AVC denials found for immich - check audit.log"
   when:
     - env_name != 'molecule'
-    - avc_check.stdout | int > 0
+    - immich_avc_check.stdout | int > 0

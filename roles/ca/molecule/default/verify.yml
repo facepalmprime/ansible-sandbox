@@ -15,21 +15,21 @@
     - name: Check node certificate exists
       ansible.builtin.stat:
         path: /etc/pki/tls/certs/{{ inventory_hostname }}.crt
-      register: node_cert
+      register: ca_node_cert
 
     - name: Assert node cert exists
       ansible.builtin.assert:
-        that: node_cert.stat.exists
+        that: ca_node_cert.stat.exists
         fail_msg: "Node cert not found"
 
     - name: Check node private key exists
       ansible.builtin.stat:
         path: /etc/pki/tls/private/{{ inventory_hostname }}.key
-      register: node_key
+      register: ca_node_key
 
     - name: Assert node key exists and has mode 0640
       ansible.builtin.assert:
         that:
-          - node_key.stat.exists
-          - node_key.stat.mode == "0640"
+          - ca_node_key.stat.exists
+          - ca_node_key.stat.mode == "0640"
         fail_msg: "Node key missing or wrong permissions"

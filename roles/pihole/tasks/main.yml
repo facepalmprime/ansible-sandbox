@@ -79,15 +79,15 @@
 - name: Check for SELinux AVC denials related to pihole-FTL
   ansible.builtin.command:
     cmd: ausearch -m avc -ts recent -c pihole-FTL
-  register: selinux_avc
+  register: pihole_selinux_avc
   changed_when: false
   failed_when: false
   when: env_name != 'molecule'
 
 - name: Report any SELinux denials for pihole-FTL
   ansible.builtin.debug:
-    msg: "SELinux AVC denials detected - review before proceeding: {{ selinux_avc.stdout }}"
+    msg: "SELinux AVC denials detected - review before proceeding: {{ pihole_selinux_avc.stdout }}"
   when:
     - env_name != 'molecule'
-    - selinux_avc.rc == 0
-    - selinux_avc.stdout | length > 0
+    - pihole_selinux_avc.rc == 0
+    - pihole_selinux_avc.stdout | length > 0
