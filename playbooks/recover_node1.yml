@@ -1,0 +1,169 @@
+---
+# node1 Disaster Recovery Playbook
+# Prerequisites:
+#  - node1 reachable via SSH as <your user>
+#  - qcow2 backups exist at node2:/srv/node1-backup/
+#  - vault password available at ~/projects/ansible-sandbox/secret.txt
+
+# Usage:
+#   ansible-playbook playbooks/recover_node1.yml -i environments/prod/hosts.ini
+#
+# Idempotent: safe to re-run. Each section is guarded.
+
+- name: Bootstrap ansible service account
+  hosts: node1
+  become: true
+  roles:
+    - role: bootstrap
+
+- name: Apply common system configuration
+  hosts: node1
+  become: true
+  roles:
+    - role: common
+
+- name: Configure bridge networking (br0)
+  hosts: node1
+  become: true
+  tasks:
+    - name: Install bridge-utils and NetworkManager
+      ansible.builtin.dnf:
+        name:
+          - bridge-utils
+          - NetworkManager
+          - NetworkManager-team
+        state: present
+
+    - name: Create br0 bridge connection
+      ansible.builtin.command:
+        cmd: >
+          nmcli connection add type bridge
+          ifname br0
+          con-name br0
+          ipv4.method manual
+          ipv4.addresses {{ node1_bridge_ip }}
+          ipv4.gateway {{ node1_bridge_gateway }}
+          ipv4.dns "8.8.8.8 8.8.4.4"
+          bridge.stp no
+          autoconnect yes
+      register: br0_result
+      changed_when: br0_result.rc == 0
+      failed_when:
+        - br0_result.rc != 0
+        - "'already exists' not in br0_result.stderr"
+
+    - name: Add bridge slave to br0 - {{ node1_bridge_slave_iface }}
+      ansible.builtin.command:
+        cmd: >
+          nmcli connection add type ethernet
+          ifname {{ node1_bridge_slave_iface }}
+          con-name br0-slave-{{ node1_bridge_slave_iface }}
+          master br0
+      register: slave_result
+      changed_when: slave_result.rc == 0
+      failed_when:
+        - slave_result.rc != 0
+        - "'already exists' not in slave_result.stderr"
+
+    - name: Bring up br0
+      ansible.builtin.command:
+        cmd: nmcli connection up br0
+      changed_when: true
+
+- name: Install KVM and libvirt
+  hosts: node1
+  become: true
+  tasks:
+    - name: Install KVM packages
+      ansible.builtin.dnf:
+        name:
+          - qemu-kvm
+          - libvirt
+          - virt-install
+          - libvirt-client
+          - python3-libvirt
+        state: present
+
+    - name: Enable and start libvirtd
+      ansible.builtin.systemd:
+        name: libvirtd
+        state: started
+        enabled: true
+
+    - name: Add mrplatinum to libvirt group
+      ansible.builtin.user:
+        name: mrplatinum
+        groups: libvirt
+        append: true
+
+- name: Restore VMs from backup
+  hosts: node1
+  become: true
+  vars:
+    backup_source: node2
+    backup_path: /srv/node1-backup
+    vm_image_dir: /var/lib/libvirt/images
+  tasks:
+    - name: Copy node3 qcow2 from node2 backup
+      ansible.posix.synchronize:
+        src: "{{ backup_path }}/node3.qcow2"
+        dest: "{{ vm_image_dir }}/node3.qcow2"
+        mode: push
+      delegate_to: "{{ backup_source }}"
+
+    - name: Copy node4 qcow2 from node2 backup
+      ansible.posix.synchronize:
+        src: "{{ backup_path }}/node4.qcow2"
+        dest: "{{ vm_image_dir }}/node4.qcow2"
+        mode: push
+      delegate_to: "{{ backup_source }}"
+
+    - name: Define node3 VM
+      community.libvirt.virt:
+        command: define
+        xml: "{{ lookup('template', '../templates/vm-node3.xml.j2') }}"
+
+    - name: Define node4 VM
+      community.libvirt.virt:
+        command: define
+        xml: "{{ lookup('template', '../templates/vm-node4.xml.j2') }}"
+
+    - name: Start node3
+      community.libvirt.virt:
+        name: node3
+        state: running
+
+    - name: Start node4
+      community.libvirt.virt:
+        name: node4
+        state: running
+
+    - name: Wait for node3 to be reachable
+      ansible.builtin.wait_for:
+        host: "{{ hostvars['node3']['ansible_host'] }}"
+        port: 22
+        timeout: 120
+
+    - name: Wait for node4 to be reachable
+      ansible.builtin.wait_for:
+        host: "{{ hostvars['node4']['ansible_host'] }}"
+        port: 22
+        timeout: 120
+
+- name: Redeploy Pi-hole
+  ansible.builtin.import_playbook: deploy_pihole.yml
+
+- name: Redeploy Gitea
+  ansible.builtin.import_playbook: deploy_gitea.yml
+
+- name: Redeploy Woodpecker
+  ansible.builtin.import_playbook: deploy_woodpecker.yml
+
+- name: Redeploy Jellyfin
+  ansible.builtin.import_playbook: deploy_jellyfin.yml
+
+- name: Redeploy Nextcloud
+  ansible.builtin.import_playbook: deploy_nextcloud.yml
+
+- name: Redeploy Immich
+  ansible.builtin.import_playbook: deploy_immich.yml

@@ -1,0 +1,23 @@
+<domain type='kvm'>
+<name>node4</name>
+<memory unit='MiB'>1024</memory>
+<vcpu>1</vcpu>
+<os>
+    <type arch='x86_64' machine='pc-i440fx-rhel7.6.0'>hvm</type>
+    <boot dev='hd'/>
+</os>
+<features><acpi/><apic/></features>
+<devices>
+<disk type='file' device='disk'>
+    <driver name='qemu' type='qcow2'/>
+    <source file='/var/lib/libvirt/images/node4.qcow2'/>
+    <target dev='vda' bus='virtio'/>
+</disk>
+<interface type='bridge'>
+    <source bridge='br0'/>
+    <model type='virtio'/>
+</interface>
+<serial type='pty'><target port='0'/></serial>
+<console type='pty'><target type='serial' port='0'/></console>
+</devices>
+</domain>
