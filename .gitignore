@@ -27,5 +27,12 @@ environments/*/host_vars/*.yml
 docs/
 .ansible-sandbox-ca/
 
+# Private keys and certificates — never commit
+*.key
+*.pem
+*.p12
+*.pfx
+
 # Friend Project — private, never commit
 environments/friend/
+environments/prod/aws_ec2.yml
