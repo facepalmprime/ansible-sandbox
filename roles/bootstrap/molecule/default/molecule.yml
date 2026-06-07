@@ -16,8 +16,6 @@ platforms:
     command: /usr/sbin/init
 provisioner:
   name: ansible
-  env:
-    ANSIBLE_CONFIG: "../../ansible.cfg"
   config_options:
     defaults:
       remote_user: root

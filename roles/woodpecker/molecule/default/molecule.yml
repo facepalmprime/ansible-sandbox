@@ -11,8 +11,6 @@ platforms:
     command: /usr/sbin/init
 provisioner:
   name: ansible
-  env:
-    ANSIBLE_CONFIG: "../../ansible.cfg"
   inventory:
     group_vars:
       all:

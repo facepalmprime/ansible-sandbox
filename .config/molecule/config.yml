@@ -1,0 +1,6 @@
+---
+provisioner:
+  name: ansible
+  env:
+    ANSIBLE_CONFIG: "../../ansible.cfg"
+    ANSIBLE_ROLES_PATH: "../../../"
