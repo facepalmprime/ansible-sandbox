@@ -1,0 +1,32 @@
+---
+- name: Verify Tailscale
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Check tailscale binary exists
+      ansible.builtin.stat:
+        path: /usr/bin/tailscale
+      register: tailscale_bin
+
+    - name: Assert tailscale binary present
+      ansible.builtin.assert:
+        that: tailscale_bin.stat.exists
+        fail_msg: "tailscale binary not found at /usr/bin/tailscale"
+
+    - name: Check tailscaled service status
+      ansible.builtin.systemd_service:
+        name: tailscaled
+      register: tailscale_service_status
+      when: env_name != 'molecule'
+
+    - name: Assert tailscaled active
+      ansible.builtin.assert:
+        that: tailscale_service_status.status.ActiveState == 'active'
+        fail_msg: "tailscaled service is not active"
+      when: env_name != 'molecule'
+
+    - name: Assert tailscaled enabled
+      ansible.builtin.assert:
+        that: tailscale_service_status.status.UnitFileState == 'enabled'
+        fail_msg: "tailscaled service is not enabled"
+      when: env_name != 'molecule'

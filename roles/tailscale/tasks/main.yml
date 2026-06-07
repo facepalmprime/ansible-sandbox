@@ -1,0 +1,59 @@
+---
+- name: Add Tailscale apt repo (Ubuntu/Debian)
+  when: ansible_os_family == 'Debian'
+  block:
+    - name: Add Tailscale apt signing key
+      ansible.builtin.get_url:
+        url: https://pkgs.tailscale.com/stable/ubuntu/jammy.noarmor.gpg
+        dest: /usr/share/keyrings/tailscale-archive-keyring.gpg
+        mode: "0644"
+
+    - name: Add Tailscale apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/ubuntu jammy main"
+        state: present
+        filename: tailscale
+
+    - name: Install tailscale (apt)
+      ansible.builtin.apt:
+        name: tailscale
+        state: present
+        update_cache: true
+
+- name: Add Tailscale dnf repo (Rocky/RHEL)
+  when: ansible_os_family == 'RedHat'
+  block:
+    - name: Add Tailscale dnf repository
+      ansible.builtin.get_url:
+        url: "https://pkgs.tailscale.com/stable/rhel/{{ ansible_distribution_major_version }}/tailscale.repo"
+        dest: /etc/yum.repos.d/tailscale.repo
+        mode: "0644"
+
+    - name: Install tailscale (dnf)
+      ansible.builtin.dnf:
+        name: tailscale
+        state: present
+
+- name: Enable and start tailscaled
+  ansible.builtin.systemd:
+    name: tailscaled
+    state: started
+    enabled: true
+  when: env_name != 'molecule'
+
+- name: Check if already joined to tailnet
+  ansible.builtin.command:
+    cmd: tailscale status --json
+  register: tailscale_status
+  changed_when: false
+  failed_when: false
+  when: env_name != 'molecule'
+
+- name: Join tailnet
+  ansible.builtin.command:
+    cmd: "tailscale up --authkey={{ tailscale_authkey }} --accept-routes {{ tailscale_up_extra_args }}"
+  changed_when: true
+  no_log: true
+  when:
+    - env_name != 'molecule'
+    - tailscale_status.rc != 0 or (tailscale_status.stdout | from_json).BackendState != 'Running'

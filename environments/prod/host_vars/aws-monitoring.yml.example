@@ -1,0 +1,2 @@
+---
+ansible_host: ec2-<ip>.us-east-2.compute.amazonaws.com
