@@ -118,6 +118,21 @@
     mode: "0644"
   notify: Restart node_exporter
 
+- name: Install firewalld on Rocky
+  ansible.builtin.package:
+    name:
+      - firewalld
+      - python3-firewall
+    state: present
+  when: ansible_os_family == 'RedHat'
+
+- name: Ensure firewalld is running
+  ansible.builtin.systemd:
+    name: firewalld
+    state: started
+    enabled: true
+  when: ansible_os_family == 'RedHat'
+
 - name: Configure firewall - Rocky
   ansible.posix.firewalld:
     rich_rule: "rule family='ipv4' source address='100.64.0.0/10' port port='{{ node_exporter_port }}' protocol='tcp' accept"
