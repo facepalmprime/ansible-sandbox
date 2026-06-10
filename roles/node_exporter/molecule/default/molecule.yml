@@ -1,0 +1,37 @@
+---
+dependency:
+  name: galaxy
+driver:
+  name: podman
+platforms:
+  - name: rocky9-ne-test
+    image: docker.io/geerlingguy/docker-rockylinux9-ansible:latest
+    pre_build_image: true
+    privileged: false
+    capabilities:
+      - SYS_ADMIN
+    cgroupns_mode: host
+    command: /usr/sbin/init
+
+  - name: ubuntu22-ne-test
+    image: docker.io/geerlingguy/docker-ubuntu2204-ansible:latest
+    pre_build_image: true
+    privileged: false
+    capabilities:
+      - SYS_ADMIN
+    cgroupns_mode: host
+    command: /usr/sbin/init
+provisioner:
+  name: ansible
+  env:
+    ANSIBLE_VAULT_PASSWORD_FILE: "{{ lookup('env', 'HOME') }}/projects/ansible-sandbox/secret.txt"
+  playbooks:
+    prepare: prepare.yml
+  inventory:
+    group_vars:
+      all:
+        ansible_python_interpreter: /usr/bin/python3
+        env_name: molecule
+
+verifier:
+  name: ansible

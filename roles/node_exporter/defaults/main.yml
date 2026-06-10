@@ -1,0 +1,29 @@
+---
+node_exporter_version: "1.11.1"
+node_exporter_user: node_exporter
+node_exporter_group: node_exporter
+node_exporter_binary: /usr/local/bin/node_exporter
+node_exporter_port: 9100
+
+# Architecture-aware binary selection
+node_exporter_arch_map:
+  x86_64: amd64
+  aarch64: arm64
+node_exporter_arch: "{{ node_exporter_arch_map[ansible_architecture] }}"
+
+node_exporter_checksum_amd64: "sha256:9f5ea48e5bc7b656f8a91a32e7d7deb89f70f73dabd0d974418aca15f37d6810"
+node_exporter_checksum_arm64: "sha256:ba1886efbd76cb96b0087c695ea8d1b9cb6e8aa946c996d744e9ee16c8e3591a"
+node_exporter_checksum: >-
+  {{ (node_exporter_arch == 'amd64') | ternary(
+        node_exporter_checksum_amd64,
+        node_exporter_checksum_arm64) }}
+
+node_exporter_archive: "node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}.tar.gz"
+node_exporter_base_url: "https://github.com/prometheus/node_exporter/releases/download"
+node_exporter_download_url: "{{ node_exporter_base_url }}/v{{ node_exporter_version }}/{{ node_exporter_archive }}"
+
+node_exporter_config_dir: /etc/node_exporter
+node_exporter_tls_dir: "{{ node_exporter_config_dir }}/tls"
+node_exporter_web_config: "{{ node_exporter_config_dir }}/web.config.yml"
+node_exporter_tls_cert: "{{ node_exporter_tls_dir }}/node_exporter.crt"
+node_exporter_tls_key: "{{ node_exporter_tls_dir }}/node_exporter.key"

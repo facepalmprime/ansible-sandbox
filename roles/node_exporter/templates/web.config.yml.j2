@@ -1,0 +1,7 @@
+tls_server_config:
+  cert_file: {{ node_exporter_tls_cert }}
+  key_file: {{ node_exporter_tls_key }}
+  min_version: TLS12
+
+basic_auth_users:
+  prometheus: {{ vault_node_exporter_auth_password_hash }}

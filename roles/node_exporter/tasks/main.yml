@@ -1,0 +1,146 @@
+---
+- name: Create node_exporter group
+  ansible.builtin.group:
+    name: "{{ node_exporter_group }}"
+    system: true
+    state: present
+
+- name: Create node_exporter user
+  ansible.builtin.user:
+    name: "{{ node_exporter_user }}"
+    group: "{{ node_exporter_group }}"
+    shell: /sbin/nologin
+    system: true
+    create_home: false
+    comment: Prometheus node exporter
+
+- name: Download node_exporter archive
+  ansible.builtin.get_url:
+    url: "{{ node_exporter_download_url }}"
+    dest: /tmp/node_exporter-{{ node_exporter_version }}.tar.gz
+    checksum: "{{ node_exporter_checksum }}"
+    mode: "0644"
+
+- name: Extract node_exporter binary
+  ansible.builtin.unarchive:
+    src: "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
+    dest: /tmp/
+    remote_src: true
+    creates: "/tmp/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}/node_exporter"
+
+- name: Install node_exporter binary
+  ansible.builtin.copy:
+    src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}/node_exporter"
+    dest: "{{ node_exporter_binary }}"
+    owner: root
+    group: root
+    mode: "0755"
+    remote_src: true
+  notify: Restart node_exporter
+
+- name: Set SELinux context on binary
+  ansible.builtin.command:
+    cmd: "semanage fcontext -a -t bin_t {{ node_exporter_binary }}"
+  when: ansible_selinux.status == 'enabled'
+  register: node_exporter_semanage_result
+  changed_when: >
+    'already defined' not in node_exporter_semanage_result.stdout and
+    'already defined' not in node_exporter_semanage_result.stderr
+  failed_when: >
+    node_exporter_semanage_result.rc != 0 and
+    'already defined' not in node_exporter_semanage_result.stderr
+
+- name: Restore SELinux context on binary
+  ansible.builtin.command:
+    cmd: "restorecon -v {{ node_exporter_binary }}"
+  when: ansible_selinux.status == 'enabled'
+  changed_when: false
+
+- name: Allow node_exporter port in SELinux
+  community.general.seport:
+    ports: "{{ node_exporter_port }}"
+    proto: tcp
+    setype: http_port_t
+    state: present
+  when:
+    - ansible_selinux.status == 'enabled'
+    - env_name != 'molecule'
+
+- name: Create node_exporter config directory
+  ansible.builtin.file:
+    path: "{{ node_exporter_config_dir }}"
+    state: directory
+    owner: root
+    group: "{{ node_exporter_group }}"
+    mode: "0750"
+
+- name: Create node_exporter TLS directory
+  ansible.builtin.file:
+    path: "{{ node_exporter_tls_dir }}"
+    state: directory
+    owner: root
+    group: "{{ node_exporter_group }}"
+    mode: "0750"
+
+- name: Deploy TLS certificate
+  ansible.builtin.copy:
+    src: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca/{{ inventory_hostname }}.crt"
+    dest: "{{ node_exporter_tls_cert }}"
+    owner: root
+    group: "{{ node_exporter_group }}"
+    mode: "0640"
+  notify: Restart node_exporter
+
+- name: Deploy TLS private key
+  ansible.builtin.copy:
+    src: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca/{{ inventory_hostname }}.key"
+    dest: "{{ node_exporter_tls_key }}"
+    owner: root
+    group: "{{ node_exporter_group }}"
+    mode: "0640"
+  notify: Restart node_exporter
+
+- name: Deploy web.config.yml
+  ansible.builtin.template:
+    src: web.config.yml.j2
+    dest: "{{ node_exporter_web_config }}"
+    owner: root
+    group: "{{ node_exporter_group }}"
+    mode: "0640"
+  notify: Restart node_exporter
+
+- name: Deploy node_exporter systemd unit
+  ansible.builtin.template:
+    src: node_exporter.service.j2
+    dest: /etc/systemd/system/node_exporter.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart node_exporter
+
+- name: Configure firewall - Rocky
+  ansible.posix.firewalld:
+    rich_rule: "rule family='ipv4' source address='100.64.0.0/10' port port='{{ node_exporter_port }}' protocol='tcp' accept"
+    state: enabled
+    permanent: true
+    immediate: true
+  when:
+    - ansible_os_family == 'RedHat'
+    - env_name != 'molecule'
+
+- name: Configure firewall - Ubuntu
+  community.general.ufw:
+    rule: allow
+    port: "{{ node_exporter_port }}"
+    proto: tcp
+    src: "100.64.0.0/10"
+  when:
+    - ansible_os_family == 'Debian'
+    - env_name != 'molecule'
+
+- name: Enable and start node_exporter
+  ansible.builtin.systemd:
+    name: node_exporter
+    state: started
+    enabled: true
+    daemon_reload: true

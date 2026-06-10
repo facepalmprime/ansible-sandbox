@@ -1,0 +1,8 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars_files:
+    - "{{ lookup('env', 'HOME') }}/projects/ansible-sandbox/environments/prod/group_vars/prod/vault.yml"
+  roles:
+    - role: node_exporter
