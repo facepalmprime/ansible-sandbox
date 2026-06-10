@@ -1,4 +1,12 @@
 ---
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that: ansible_os_family in ['RedHat', 'Debian']
+    fail_msg: "Unsupported OS family: {{ ansible_os_family }}. Supported: RedHat, Debian."
+
+- name: Load platform variables
+  ansible.builtin.include_vars: "{{ ansible_os_family }}.yml"
+
 # - CA generation (runs on control node, once)
 - name: Create CA directory on control node
   ansible.builtin.file:
@@ -86,6 +94,14 @@
   become: false
 
 # - Distribute CA cert to managed nodes
+- name: Ensure CA trust anchor directory exists
+  ansible.builtin.file:
+    path: "{{ ca_trust_anchor_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Copy CA cert to trust anchors
   ansible.builtin.copy:
     src: "{{ ca_dir }}/ca.crt"
@@ -98,6 +114,14 @@
     - Update CA trust store (Ubuntu/Debian)
 
 # - Deploy node cert and key to management nodes
+- name: Ensure node certificate directory exists
+  ansible.builtin.file:
+    path: "{{ ca_node_cert_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Copy node certificate to managed node
   ansible.builtin.copy:
     src: "{{ ca_dir }}/{{ inventory_hostname }}.crt"
@@ -106,10 +130,24 @@
     group: root
     mode: "0644"
 
+- name: Ensure platform key prerequisites are installed
+  ansible.builtin.package:
+    name: "{{ ca_node_key_packages }}"
+    state: present
+  when: ca_node_key_packages | length > 0
+
+- name: Ensure node key directory exists
+  ansible.builtin.file:
+    path: "{{ ca_node_key_dir }}"
+    state: directory
+    owner: root
+    group: "{{ ca_node_key_group }}"
+    mode: "{{ ca_node_key_dir_mode }}"
+
 - name: Copy node private key to managed node
   ansible.builtin.copy:
     src: "{{ ca_dir }}/{{ inventory_hostname }}.key"
     dest: "{{ ca_node_key_dir }}/{{ inventory_hostname }}.key"
     owner: root
-    group: root
+    group: "{{ ca_node_key_group }}"
     mode: "0640"

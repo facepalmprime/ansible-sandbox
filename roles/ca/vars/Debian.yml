@@ -1,0 +1,8 @@
+---
+ca_trust_anchor_dir: /usr/local/share/ca-certificates
+ca_node_cert_dir: /etc/ssl/certs
+ca_node_key_dir: /etc/ssl/private
+ca_node_key_dir_mode: "0710"
+ca_node_key_group: ssl-cert
+ca_node_key_packages:
+  - ssl-cert

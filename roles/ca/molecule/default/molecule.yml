@@ -4,8 +4,12 @@ dependency:
 driver:
   name: podman
 platforms:
-  - name: ca-rocky
-    image: geerlingguy/docker-rockylinux8-ansible:latest
+  - name: ca-rocky9
+    image: geerlingguy/docker-rockylinux9-ansible:latest
+    pre_build_image: true
+
+  - name: ca-ubuntu22
+    image: geerlingguy/docker-ubuntu2204-ansible:latest
     pre_build_image: true
 provisioner:
   name: ansible
