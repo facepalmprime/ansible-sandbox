@@ -10,6 +10,7 @@ ExecStart={{ promtail_binary }} -config.file={{ promtail_config_dir }}/promtail.
 Restart=on-failure
 RestartSec=5s
 NoNewPrivileges=true
+SupplementaryGroups=adm
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths={{ promtail_config_dir }} /var/lib/promtail
