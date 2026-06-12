@@ -36,3 +36,31 @@
     group: root
     mode: "0440"
     validate: /usr/sbin/visudo -cf %s
+
+- name: Create adm group on RedHat (log reader group - matches Debian convention)
+  ansible.builtin.group:
+    name: adm
+    system: true
+    state: present
+  when: ansible_os_family == 'RedHat'
+
+- name: Deploy logrotate config for ansible sudo audit log
+  ansible.builtin.template:
+    src: ansible-sudo-logrotate.j2
+    dest: /etc/logrotate.d/ansible-sudo
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Check if ansible sudo audit log exists
+  ansible.builtin.stat:
+    path: /var/log/ansible-sudo.log
+  register: bootstrap_sudo_log
+
+- name: Ensure ansible sudo audit log is adm-readable
+  ansible.builtin.file:
+    path: /var/log/ansible-sudo.log
+    owner: root
+    group: adm
+    mode: "0640"
+  when: bootstrap_sudo_log.stat.exists
