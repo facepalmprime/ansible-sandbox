@@ -24,7 +24,7 @@ platforms:
 provisioner:
   name: ansible
   env:
-    ANSIBLE_VAULT_PASSWORD_FILE: "{{ lookup('env', 'HOME') }}/projects/ansible-sandbox/secret.txt"
+    ANSIBLE_VAULT_PASSWORD_FILE: "~/projects/ansible-sandbox/secret.txt"
   playbooks:
     prepare: prepare.yml
   inventory:

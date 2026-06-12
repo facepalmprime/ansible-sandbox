@@ -1,5 +1,5 @@
 ---
-- name: Prepare - generate self-signed TLS certificates for molecule hosts
+- name: Prepare - generate CA-signed TLS certificates for molecule hosts
   hosts: localhost
   gather_facts: false
   tasks:
@@ -8,6 +8,43 @@
         path: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca"
         state: directory
         mode: "0700"
+
+    - name: Check if CA certificate exists
+      ansible.builtin.stat:
+        path: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca/ca.crt"
+      register: node_exporter_ca_cert
+
+    - name: Generate CA private key
+      community.crypto.openssl_privatekey:
+        path: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca/ca.key"
+        type: RSA
+        size: 4096
+        mode: "0600"
+      when: not node_exporter_ca_cert.stat.exists
+
+    - name: Generate CA CSR
+      community.crypto.openssl_csr_pipe:
+        privatekey_path: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca/ca.key"
+        common_name: "Ansible Sandbox Local CA"
+        basic_constraints:
+          - 'CA:TRUE'
+        basic_constraints_critical: true
+        key_usage:
+          - keyCertSign
+          - cRLSign
+        key_usage_critical: true
+      register: node_exporter_ca_csr_result
+      when: not node_exporter_ca_cert.stat.exists
+
+    - name: Generate CA certificate
+      community.crypto.x509_certificate:
+        path: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca/ca.crt"
+        csr_content: "{{ node_exporter_ca_csr_result.csr }}"
+        privatekey_path: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca/ca.key"
+        provider: selfsigned
+        selfsigned_not_after: "+3650d"
+        mode: "0644"
+      when: not node_exporter_ca_cert.stat.exists
 
     - name: Generate private key for each molecule host
       community.crypto.openssl_privatekey:
@@ -25,15 +62,17 @@
           - "DNS:{{ item }}"
           - "DNS:localhost"
           - "IP:127.0.0.1"
+      changed_when: false
       loop: "{{ groups['all'] }}"
       register: node_exporter_csr_results
 
-    - name: Generate self-signed certificate for each molecule host
+    - name: Sign host certificate with CA
       community.crypto.x509_certificate:
         path: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca/{{ item.item }}.crt"
         csr_content: "{{ item.csr }}"
-        privatekey_path: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca/{{ item.item }}.key"
-        provider: selfsigned
-        selfsigned_not_after: "+30d"
+        ownca_path: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca/ca.crt"
+        ownca_privatekey_path: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca/ca.key"
+        provider: ownca
+        ownca_not_after: "+30d"
         mode: "0644"
       loop: "{{ node_exporter_csr_results.results }}"
