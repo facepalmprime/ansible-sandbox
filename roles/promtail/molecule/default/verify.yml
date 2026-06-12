@@ -1,0 +1,69 @@
+---
+- name: Verify Promtail
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: Collect service facts
+      ansible.builtin.service_facts:
+
+    - name: Check promtail binary exists
+      ansible.builtin.stat:
+        path: /usr/local/bin/promtail
+      register: promtail_bin
+
+    - name: Assert binary present and executable
+      ansible.builtin.assert:
+        that:
+          - promtail_bin.stat.exists
+          - promtail_bin.stat.executable
+        fail_msg: "promtail binary missing or not executable at /usr/local/bin/promtail"
+
+    - name: Check promtail user exists
+      ansible.builtin.command:
+        cmd: getent passwd promtail
+      changed_when: false
+      register: promtail_passwd
+
+    - name: Assert user has nologin shell
+      ansible.builtin.assert:
+        that: >
+          promtail_passwd.stdout.split(':')[6] in
+          ['/sbin/nologin', '/usr/sbin/nologin', '/bin/false']
+        fail_msg: "promtail user is not nologin"
+
+    - name: Check config directory exists
+      ansible.builtin.stat:
+        path: /etc/promtail
+      register: promtail_config_dir
+
+    - name: Assert config directory present
+      ansible.builtin.assert:
+        that: promtail_config_dir.stat.isdir
+        fail_msg: "promtail config directory /etc/promtail not found"
+
+    - name: Check config file exists
+      ansible.builtin.stat:
+        path: /etc/promtail/promtail.yml
+      register: promtail_config
+
+    - name: Assert config present
+      ansible.builtin.assert:
+        that: promtail_config.stat.exists
+        fail_msg: "promtail config not found at /etc/promtail/promtail.yml"
+
+    - name: Check systemd unit file exists
+      ansible.builtin.stat:
+        path: /etc/systemd/system/promtail.service
+      register: promtail_unit
+
+    - name: Assert unit file present
+      ansible.builtin.assert:
+        that: promtail_unit.stat.exists
+        fail_msg: "promtail.service unit not found"
+
+    - name: Assert promtail service is running
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.services['promtail.service'] is defined
+          - ansible_facts.services['promtail.service']['state'] == 'running'
+        fail_msg: "promtail service not running"

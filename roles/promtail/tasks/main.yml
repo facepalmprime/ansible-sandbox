@@ -1,0 +1,180 @@
+---
+- name: Create promtail group
+  ansible.builtin.group:
+    name: "{{ promtail_group }}"
+    system: true
+    state: present
+
+- name: Create promtail user
+  ansible.builtin.user:
+    name: "{{ promtail_user }}"
+    group: "{{ promtail_group }}"
+    shell: /sbin/nologin
+    system: true
+    create_home: false
+    groups: systemd-journal
+    append: true
+    comment: Grafana Promtail log shipper
+
+- name: Create promtail directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ promtail_user }}"
+    group: "{{ promtail_group }}"
+    mode: "0750"
+  loop:
+    - "{{ promtail_config_dir }}"
+    - /var/lib/promtail
+
+- name: Create promtail TLS directory
+  ansible.builtin.file:
+    path: "{{ promtail_tls_dir }}"
+    state: directory
+    owner: root
+    group: "{{ promtail_group }}"
+    mode: "0750"
+
+- name: Deploy Loki CA cert
+  ansible.builtin.copy:
+    src: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca/ca.crt"
+    dest: "{{ promtail_tls_ca_cert }}"
+    owner: root
+    group: "{{ promtail_group }}"
+    mode: "0640"
+  notify: Restart promtail
+
+- name: Deploy TLS certificate
+  ansible.builtin.copy:
+    src: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca/{{ inventory_hostname }}.crt"
+    dest: "{{ promtail_tls_server_cert }}"
+    owner: root
+    group: "{{ promtail_group }}"
+    mode: "0640"
+  notify: Restart promtail
+
+- name: Deploy TLS private key
+  ansible.builtin.copy:
+    src: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca/{{ inventory_hostname }}.key"
+    dest: "{{ promtail_tls_server_key }}"
+    owner: root
+    group: "{{ promtail_group }}"
+    mode: "0640"
+  notify: Restart promtail
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  when: ansible_os_family == 'Debian'
+
+- name: Install unzip (required to extract promtail)
+  ansible.builtin.package:
+    name: unzip
+    state: present
+
+- name: Download promtail binary
+  ansible.builtin.get_url:
+    url: "{{ promtail_download_url }}"
+    dest: "/tmp/promtail-linux-{{ promtail_arch }}.zip"
+    checksum: "{{ promtail_checksum }}"
+    mode: "0644"
+
+- name: Extract promtail binary
+  ansible.builtin.unarchive:
+    src: "/tmp/promtail-linux-{{ promtail_arch }}.zip"
+    dest: /tmp/
+    remote_src: true
+
+- name: Install promtail binary
+  ansible.builtin.copy:
+    src: "/tmp/promtail-linux-{{ promtail_arch }}"
+    dest: "{{ promtail_binary }}"
+    owner: root
+    group: root
+    mode: "0755"
+    remote_src: true
+  notify: Restart promtail
+
+- name: Set SELinux context on binary
+  ansible.builtin.command:
+    cmd: "semanage fcontext -a -t bin_t {{ promtail_binary }}"
+  when: ansible_selinux.status == 'enabled'
+  register: promtail_semanage_result
+  changed_when: >
+    'already defined' not in promtail_semanage_result.stdout and
+    'already defined' not in promtail_semanage_result.stderr
+  failed_when: >
+    promtail_semanage_result.rc != 0 and
+    'already defined' not in promtail_semanage_result.stderr
+
+- name: Deploy promtail config
+  ansible.builtin.template:
+    src: promtail.yml.j2
+    dest: "{{ promtail_config_dir }}/promtail.yml"
+    owner: "{{ promtail_user }}"
+    group: "{{ promtail_group }}"
+    mode: "0640"
+  notify: Restart promtail
+
+- name: Deploy promtail systemd unit
+  ansible.builtin.template:
+    src: promtail.service.j2
+    dest: /etc/systemd/system/promtail.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart promtail
+
+- name: Allow promtail port in SELinux
+  community.general.seport:
+    ports: "{{ promtail_port }}"
+    proto: tcp
+    setype: http_port_t
+  when:
+    - ansible_selinux.status == 'enabled'
+    - env_name != 'molecule'
+
+- name: Install firewalld on Rocky
+  ansible.builtin.package:
+    name:
+      - firewalld
+      - python3-firewall
+    state: present
+  when: ansible_os_family == 'RedHat'
+
+- name: Ensure firewalld is running
+  ansible.builtin.systemd:
+    name: firewalld
+    state: started
+    enabled: true
+  when:
+    - ansible_os_family == 'RedHat'
+    - env_name != 'molecule'
+
+- name: Configure firewall - Rocky
+  ansible.posix.firewalld:
+    rich_rule: "rule family='ipv4' source address='{{ tailscale_cgnat_range }}' port port='{{ promtail_port }}' protocol='tcp' accept"
+    state: enabled
+    permanent: true
+    immediate: true
+  when:
+    - ansible_os_family == 'RedHat'
+    - env_name != 'molecule'
+
+- name: Configure firewall - Ubuntu
+  community.general.ufw:
+    rule: allow
+    port: "{{ promtail_port }}"
+    proto: tcp
+    src: "{{ tailscale_cgnat_range }}"
+  when:
+    - ansible_os_family == 'Debian'
+    - env_name != 'molecule'
+
+- name: Enable and start promtail
+  ansible.builtin.systemd:
+    name: promtail
+    state: started
+    enabled: true
+    daemon_reload: true

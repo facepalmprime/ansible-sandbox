@@ -1,0 +1,36 @@
+server:
+  http_listen_port: {{ promtail_port }}
+  grpc_listen_port: 0
+  http_tls_config:
+    cert_file: {{ promtail_tls_server_cert }}
+    key_file: {{ promtail_tls_server_key }}
+
+positions:
+  filename: {{ promtail_positions_path }}
+
+clients:
+  - url: {{ loki_url }}/loki/api/v1/push
+    tls_config:
+      ca_file: {{ promtail_tls_ca_cert }}
+      cert_file: {{ promtail_tls_server_cert }}
+      key_file: {{ promtail_tls_server_key }}
+
+scrape_configs:
+  - job_name: system
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: varlogs
+          host: {{ ansible_hostname }}
+          __path__: /var/log/*log
+
+  - job_name: journal
+    journal:
+      max_age: 12h
+      labels:
+        job: systemd-journal
+        host: {{ ansible_hostname }}
+    relabel_configs:
+      - source_labels: [__journal__systemd_unit]
+        target_label: unit

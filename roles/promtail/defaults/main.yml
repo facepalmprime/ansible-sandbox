@@ -1,0 +1,31 @@
+---
+promtail_version: "3.3.0"
+promtail_user: promtail
+promtail_group: promtail
+promtail_binary: /usr/local/bin/promtail
+promtail_config_dir: /etc/promtail
+promtail_positions_path: /var/lib/promtail/positions.yml
+
+promtail_arch_map:
+  x86_64: amd64
+  aarch64: arm64
+promtail_arch: "{{ promtail_arch_map[ansible_architecture] }}"
+
+promtail_checksum_amd64: "sha256:5e680ea12318ef02eaef36ae139f93587ca3b4404455efed1f4963407433ed94"
+promtail_checksum_arm64: "sha256:d2777da859c4a1e765e340e5faea8b14a6abf6b40ee347c2f46f7e2992525d3b"
+promtail_checksum: >-
+  {{ (promtail_arch == 'amd64') | ternary(
+        promtail_checksum_amd64,
+        promtail_checksum_arm64) }}
+
+promtail_download_url: >-
+  https://github.com/grafana/loki/releases/download/v{{ promtail_version }}/promtail-linux-{{ promtail_arch }}.zip
+
+
+# TLS - CA cert for varyfying Loki's certificate
+promtail_tls_dir: "{{ promtail_config_dir }}/tls"
+promtail_tls_ca_cert: "{{ promtail_tls_dir }}/ca.crt"
+
+promtail_port: 9080
+promtail_tls_server_cert: "{{ promtail_tls_dir }}/promtail.crt"
+promtail_tls_server_key: "{{ promtail_tls_dir }}/promtail.key"

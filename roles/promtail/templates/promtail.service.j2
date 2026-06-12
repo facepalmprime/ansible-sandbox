@@ -1,0 +1,20 @@
+[Unit]
+Description=Grafana Promtail log shipper
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User={{ promtail_user }}
+Group={{ promtail_group }}
+ExecStart={{ promtail_binary }} -config.file={{ promtail_config_dir }}/promtail.yml
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ promtail_config_dir }} /var/lib/promtail
+PrivateTmp=true
+PrivateDevices=true
+
+[Install]
+WantedBy=multi-user.target
