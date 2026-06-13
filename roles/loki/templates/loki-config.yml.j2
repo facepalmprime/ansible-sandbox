@@ -1,0 +1,53 @@
+auth_enabled: false
+
+server:
+  http_listen_address: {{ loki_http_listen_address }}
+  http_listen_port: {{ loki_http_port }}
+  http_tls_config:
+    cert_file: {{ loki_tls_cert }}
+    key_file: {{ loki_tls_key }}
+    client_ca_file: {{ loki_tls_ca_cert }}
+    client_auth_type: RequireAndVerifyClientCert
+
+common:
+  replication_factor: 1
+  path_prefix: {{ loki_data_dir }}
+  ring:
+    instance_addr: {{ loki_instance_addr }}
+    kvstore:
+      store: inmemory
+
+storage_config:
+  filesystem:
+    directory: {{ loki_data_dir }}/chunks
+
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+query_range:
+  align_queries_with_step: true
+  cache_results: true
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        max_size_mb: 100
+
+limits_config:
+  allow_structured_metadata: true
+  retention_period: {{ loki_retention_period }}
+
+compactor:
+  working_directory: {{ loki_data_dir }}/compactor
+  compaction_interval: 10m
+  retention_enabled: true
+  retention_delete_delay: 2h
+  retention_delete_worker_count: 150
+  delete_request_store: filesystem

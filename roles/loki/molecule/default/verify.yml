@@ -1,0 +1,82 @@
+---
+- name: Verify Loki
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: Check loki binary exists
+      ansible.builtin.stat:
+        path: /usr/local/bin/loki
+      register: loki_bin
+
+    - name: Assert binary present
+      ansible.builtin.assert:
+        that: loki_bin.stat.exists and loki_bin.stat.executable
+        fail_msg: "loki binary missing"
+
+    - name: Check loki user exists
+      ansible.builtin.command:
+        cmd: id loki
+      changed_when: false
+
+    - name: Check config file present
+      ansible.builtin.stat:
+        path: /etc/loki/loki-config.yml
+      register: loki_config
+
+    - name: Assert config present
+      ansible.builtin.assert:
+        that: loki_config.stat.exists
+        fail_msg: "loki config not found"
+
+    - name: Collect service facts
+      ansible.builtin.service_facts:
+
+    - name: Assert loki service is running
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.services['loki.service'] is defined
+          - ansible_facts.services['loki.service']['state'] == 'running'
+        fail_msg: "loki service not running"
+
+    - name: Check loki user has nologin shell
+      ansible.builtin.command:
+        cmd: getent passwd loki
+      register: loki_passwd
+      changed_when: false
+
+    - name: Assert nologin shell
+      ansible.builtin.assert:
+        that: "'/nologin' in loki_passwd.stdout or '/false' in loki_passwd.stdout"
+        fail_msg: "loki user does not have nologin shell"
+
+    - name: Check data directory
+      ansible.builtin.stat:
+        path: /var/lib/loki
+      register: loki_data
+
+    - name: Assert data directory mode
+      ansible.builtin.assert:
+        that:
+          - loki_data.stat.exists
+          - loki_data.stat.mode == "0750"
+        fail_msg: "loki data dir missing or wrong mode"
+
+    - name: Check config file mode
+      ansible.builtin.stat:
+        path: /etc/loki/loki-config.yml
+      register: loki_config_mode
+
+    - name: Assert config file mode
+      ansible.builtin.assert:
+        that: loki_config_mode.stat.mode == '0640'
+        fail_msg: "loki config has wrong permissions"
+
+    - name: Check systemd unit file exists
+      ansible.builtin.stat:
+        path: /etc/systemd/system/loki.service
+      register: loki_unit
+
+    - name: Assert unit file present
+      ansible.builtin.assert:
+        that: loki_unit.stat.exists
+        fail_msg: "loki.service unit file missing"

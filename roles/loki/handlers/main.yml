@@ -1,0 +1,7 @@
+---
+- name: Restart loki
+  ansible.builtin.systemd:
+    name: loki
+    state: restarted
+    daemon_reload: true
+  when: env_name != 'molecule'

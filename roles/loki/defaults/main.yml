@@ -1,0 +1,36 @@
+---
+loki_version: "3.3.0"
+loki_user: loki
+loki_group: loki
+loki_binary: /usr/local/bin/loki
+loki_config_dir: /etc/loki
+loki_data_dir: /var/lib/loki
+loki_http_port: 3100
+loki_http_listen_address: >-
+  {{ ansible_tailscale0.ipv4.address
+     if ('tailscale0' in ansible_interfaces)
+     else '0.0.0.0' }}
+loki_instance_addr: "127.0.0.1"
+loki_retention_period: 744h  # 31 days
+
+# Architecture-aware binary selection
+loki_arch_map:
+  x86_64: amd64
+  aarch64: arm64
+loki_arch: "{{ loki_arch_map[ansible_architecture] }}"
+
+loki_checksum_amd64: "sha256:1e0108065e17e7c5e625071def7f9a6d80eff345affe0505a3626ac080345dff"
+loki_checksum_arm64: "sha256:a2b74c31f7436c7553c13f83460ec362a6f30e0c53924a7bc32d52a021ea1bf6"
+loki_checksum: >-
+  {{ (loki_arch == 'amd64') | ternary(
+        loki_checksum_amd64,
+        loki_checksum_arm64) }}
+
+loki_download_url: >-
+  https://github.com/grafana/loki/releases/download/v{{ loki_version }}/loki-linux-{{ loki_arch }}.zip
+
+# TLS - certs sourced from ~/.ansible-sandbox-ca/ (ca role output on control node)
+loki_tls_dir: "{{ loki_config_dir }}/tls"
+loki_tls_cert: "{{ loki_tls_dir }}/loki.crt"
+loki_tls_key: "{{ loki_tls_dir }}/loki.key"
+loki_tls_ca_cert: "{{ loki_tls_dir }}/ca.crt"

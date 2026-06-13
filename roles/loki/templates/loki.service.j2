@@ -1,0 +1,23 @@
+[Unit]
+Description=Grafana Loki log aggregator
+Documentation=https://grafana.com/docs/loki/latest/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User={{ loki_user }}
+Group={{ loki_group }}
+ExecStart={{ loki_binary }} -config.file={{ loki_config_dir }}/loki-config.yml
+Restart=on-failure
+RestartSec=5s
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=true
+PrivateDevices=true
+CapabilityBoundingSet=
+ReadWritePaths={{ loki_data_dir }}
+
+[Install]
+WantedBy=multi-user.target
