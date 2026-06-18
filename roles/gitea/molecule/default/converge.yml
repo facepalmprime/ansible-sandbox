@@ -3,6 +3,8 @@
   hosts: all
   gather_facts: true
   become: true
+  vars_files:
+    - "{{ lookup('env', 'HOME') }}/projects/ansible-sandbox/environments/prod/group_vars/prod/vault.yml"
 
   roles:
     - role: ca

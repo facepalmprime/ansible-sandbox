@@ -4,20 +4,19 @@ dependency:
 driver:
   name: podman
 platforms:
-  - name: rocky8-woodpecker-test
-    image: docker.io/geerlingguy/docker-rockylinux8-ansible:latest
+  - name: rocky9-woodpecker-test
+    image: docker.io/geerlingguy/docker-rockylinux9-ansible:latest
     pre_build_image: true
     privileged: true
     command: /usr/sbin/init
 provisioner:
   name: ansible
+  env:
+    ANSIBLE_VAULT_PASSWORD_FILE: "~/projects/ansible-sandbox/secret.txt"
   inventory:
     group_vars:
       all:
         ansible_python_interpreter: /usr/bin/python3
         env_name: molecule
-        vault_woodpecker_gitea_client: "molecule_test_client_id"
-        vault_woodpecker_gitea_secret: "molecule_test_client_secret"
-        vault_woodpecker_agent_secret: "molecule_test_agent_secret_32chars_min"
 verifier:
   name: ansible
