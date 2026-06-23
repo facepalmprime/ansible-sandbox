@@ -5,7 +5,13 @@
 set -e
 
 echo "Running ansible-lint..."
-ansible-lint
+
+staged_files=$(git diff --staged --name-only --diff-filter=ACMR -- '*.yml' '*.yaml')
+if [ -n "$staged_files" ]; then
+  ansible-lint $staged_files
+else
+  echo "No YAML file staged, skipping ansible-lint."
+fi
 
 echo "ansible-lint passed."
 
