@@ -71,6 +71,13 @@
           - woodpecker_server_env.stat.mode == '0600'
         fail_msg: "/etc/woodpecker/server.env missing or not mode 0600 - secrets exposed"
 
+    - name: Check WOODPECKER_PLUGINS_PRIVILEGED is explicitly denied
+      ansible.builtin.command:
+        cmd: grep -c '^WOODPECKER_PLUGINS_PRIVILEGED=$' /etc/woodpecker/server.env
+      register: woodpecker_privileged_check
+      changed_when: false
+      failed_when: woodpecker_privileged_check.stdout != "1"
+
     - name: Check agent environment file exists
       ansible.builtin.stat:
         path: /etc/woodpecker/agent.env
