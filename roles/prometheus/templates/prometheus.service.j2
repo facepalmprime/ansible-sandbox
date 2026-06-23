@@ -1,0 +1,30 @@
+[Unit]
+Description=Prometheus monitoring system
+Documentation=https://prometheus.io/docs/
+After=network-online.target
+
+[Service]
+User={{ prometheus_user }}
+Group={{ prometheus_group }}
+ExecStart={{ prometheus_binary }} \
+  --config.file={{ prometheus_config_dir }}/prometheus.yml \
+  --web.config.file={{ prometheus_config_dir }}/web-config.yml \
+  --storage.tsdb.path={{ prometheus_data_dir }} \
+  --storage.tsdb.retention.time={{ prometheus_retention }} \
+  --web.listen-address=127.0.0.1:{{ prometheus_port }} \
+  --web.enable-lifecycle
+
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=true
+PrivateDevices=true
+ReadWritePaths={{ prometheus_data_dir }}
+ReadOnlyPaths={{ prometheus_config_dir }}
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

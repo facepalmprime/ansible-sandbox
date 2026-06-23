@@ -1,0 +1,57 @@
+---
+groups:
+  - name: node_alerts
+    rules:
+      - alert: NodeDown
+        expr: up{job="node_exporter"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Node {{ $labels.instance }} is down"
+          description: "node_exporter on {{ $labels.instance }} has been unreachable for more than 2 minutes"
+
+      - alert: DiskSpaceWarning
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low disk space on {{ $labels.instance }}"
+          description: "Root filesystem on {{ $labels.instance }} is {{ $value | printf \"%.1f\" }}% full."
+
+      - alert: DiskSpaceCritical
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 10
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical disk space on {{ $labels.instance }}"
+          description: " Root filesystem on {{ $labels.instance }} is {{ $value | printf \"%.1f\" }}% full."
+
+      - alert: HighCPU
+        expr: 100 - (avg by(instance)(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU on {{ $labels.instance }}"
+          description: "CPU usage on {{ $labels.instance }} is {{ $value | printf \"%.1f\" }}% for 10 minutes"
+
+      - alert: HighMemory
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory on {{ $labels.instance }}"
+          description: "Memory usage on {{ $labels.instance }} is {{ $value | printf \"%.1f\" }}%."
+
+      - alert: PromtailDown
+        expr: absent(promtail_build_info)
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Promtail not reporting on {{ $labels.instance }}"
+          description: "No Promtail metrics seen for 15 minutes - log shipping may have stopped."

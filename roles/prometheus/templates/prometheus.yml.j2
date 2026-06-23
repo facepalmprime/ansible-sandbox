@@ -1,0 +1,50 @@
+global:
+  scrape_interval: {{ prometheus_scrape_interval }}
+  evaluation_interval: {{ prometheus_evaluation_interval }}
+
+alerting:
+  alertmanagers:
+    - scheme: https
+      tls_config:
+        ca_file: "{{ prometheus_tls_ca_cert }}"
+      static_configs:
+        - targets:
+          - "localhost:9093"
+
+rule_files:
+  - "{{ prometheus_config_dir }}/alerts/*.yml"
+
+scrape_configs:
+  - job_name: prometheus
+    scheme: https
+    tls_config:
+      ca_file: "{{ prometheus_tls_ca_cert }}"
+    basic_auth:
+      username: "{{ prometheus_basic_auth_user }}"
+      password: "{{ vault_prometheus_basic_auth_plaintext }}"
+    static_configs:
+      - targets:
+          - "localhost:{{ prometheus_port }}"
+
+  - job_name: node_exporter
+    scheme: https
+    tls_config:
+      ca_file: "{{ prometheus_tls_ca_cert }}"
+    basic_auth:
+      username: prometheus
+      password: "{{ vault_node_exporter_auth_password }}"
+    static_configs:
+      - targets:
+{% for host in groups['all'] %}
+{% if hostvars[host].tailscale_hostname is defined and hostvars[host].tailscale_hostname %}
+                - "{{ hostvars[host].tailscale_hostname }}.{{ tailscale_tailnet_suffix }}:9100"
+{% endif %}
+{% endfor %}
+
+  - job_name: loki
+    scheme: https
+    tls_config:
+      ca_file: "{{ prometheus_tls_ca_cert }}"
+    static_configs:
+      - targets:
+          - "localhost:3100"

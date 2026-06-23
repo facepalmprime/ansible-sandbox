@@ -1,0 +1,156 @@
+---
+- name: Create prometheus group
+  ansible.builtin.group:
+    name: "{{ prometheus_group }}"
+    system: true
+    state: present
+
+- name: Create prometheus user
+  ansible.builtin.user:
+    name: "{{ prometheus_user }}"
+    group: "{{ prometheus_group }}"
+    shell: /sbin/nologin
+    system: true
+    create_home: false
+    comment: Prometheus monitoring
+
+- name: Create prometheus directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ prometheus_group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ prometheus_config_dir }}", owner: root, mode: "0755" }
+    - { path: "{{ prometheus_config_dir }}/alerts", owner: root, mode: "0755" }
+    - { path: "{{ prometheus_tls_dir }}", owner: root, mode: "0750" }
+    - { path: "{{ prometheus_data_dir }}", owner: "{{ prometheus_user }}", mode: "0750" }
+
+- name: Deploy CA cert
+  ansible.builtin.copy:
+    src: "{{ prometheus_pki_ca_cert }}"
+    dest: "{{ prometheus_tls_ca_cert }}"
+    owner: root
+    group: "{{ prometheus_group }}"
+    mode: "0640"
+
+- name: Deploy Prometheus TLS certificate
+  ansible.builtin.copy:
+    src: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca/{{ inventory_hostname }}.crt"
+    dest: "{{ prometheus_tls_cert }}"
+    owner: root
+    group: "{{ prometheus_group }}"
+    mode: "0640"
+  notify: Restart prometheus
+
+- name: Deploy Prometheus TLS key
+  ansible.builtin.copy:
+    src: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca/{{ inventory_hostname }}.key"
+    dest: "{{ prometheus_tls_key }}"
+    owner: root
+    group: "{{ prometheus_group }}"
+    mode: "0640"
+  notify: Restart prometheus
+
+- name: Download prometheus archive
+  ansible.builtin.get_url:
+    url: "{{ prometheus_download_url }}"
+    dest: "/tmp/prometheus-{{ prometheus_version }}.linux-{{ prometheus_arch }}.tar.gz"
+    checksum: "{{ prometheus_checksum }}"
+    mode: "0644"
+
+- name: Extract prometheus archive
+  ansible.builtin.unarchive:
+    src: "/tmp/prometheus-{{ prometheus_version }}.linux-{{ prometheus_arch }}.tar.gz"
+    dest: /tmp/
+    remote_src: true
+    creates: "/tmp/prometheus-{{ prometheus_version }}.linux-{{ prometheus_arch }}/prometheus"
+
+- name: Install prometheus binaries
+  ansible.builtin.copy:
+    src: "/tmp/prometheus-{{ prometheus_version }}.linux-{{ prometheus_arch }}/{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
+    owner: root
+    group: root
+    mode: "0755"
+    remote_src: true
+  loop:
+    - prometheus
+    - promtool
+  notify: Restart prometheus
+
+- name: Deploy web-config.yml
+  ansible.builtin.template:
+    src: web-config.yml.j2
+    dest: "{{ prometheus_config_dir }}/web-config.yml"
+    owner: root
+    group: "{{ prometheus_group }}"
+    mode: "0640"
+  notify: Restart prometheus
+
+- name: Deploy prometheus config
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: "{{ prometheus_config_dir }}/prometheus.yml"
+    owner: root
+    group: "{{ prometheus_group }}"
+    mode: "0640"
+    validate: "/usr/local/bin/promtool check config %s"
+  notify: Restart prometheus
+  when: env_name != 'molecule'
+
+- name: Deploy prometheus config (molecule - skip validate)
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: "{{ prometheus_config_dir }}/prometheus.yml"
+    owner: root
+    group: "{{ prometheus_group }}"
+    mode: "0640"
+  notify: Restart prometheus
+  when: env_name == 'molecule'
+
+- name: Deploy alert rules
+  ansible.builtin.copy:
+    src: alerts/node.yml
+    dest: "{{ prometheus_config_dir }}/alerts/node.yml"
+    owner: root
+    group: "{{ prometheus_group }}"
+    mode: "0640"
+  notify: Restart prometheus
+
+- name: Deploy prometheus systemd unit
+  ansible.builtin.template:
+    src: prometheus.service.j2
+    dest: /etc/systemd/system/prometheus.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart prometheus
+
+- name: Allow prometheus port via firewalld
+  ansible.posix.firewalld:
+    rich_rule: "rule family='ipv4' source address='127.0.0.1' port protocol='tcp' port='{{ prometheus_port }}' accept"
+    permanent: true
+    state: enabled
+    immediate: true
+  when:
+    - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
+
+- name: Allow prometheus port via ufw
+  community.general.ufw:
+    rule: allow
+    port: "{{ prometheus_port }}"
+    proto: tcp
+    src: "127.0.0.1"
+  when:
+    - env_name != 'molecule'
+    - ansible_os_family == 'Debian'
+
+- name: Enable and start prometheus
+  ansible.builtin.systemd:
+    name: prometheus
+    state: started
+    enabled: true
+    daemon_reload: true

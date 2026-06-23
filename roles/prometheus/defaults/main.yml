@@ -1,0 +1,36 @@
+---
+prometheus_version: "2.55.0"
+prometheus_user: prometheus
+prometheus_group: prometheus
+prometheus_binary: /usr/local/bin/prometheus
+prometheus_promtool: /usr/local/bin/promtool
+prometheus_config_dir: /etc/prometheus
+prometheus_data_dir: /var/lib/prometheus
+prometheus_port: 9090
+prometheus_retention: 15d
+prometheus_scrape_interval: 15s
+prometheus_evaluation_interval: 15s
+
+# Architecture - selects current binary at runtime (aarch64 on aws-monitoring, x86_64 on Rocky/Ubuntu nodes)
+prometheus_arch_map:
+  x86_64: amd64
+  aarch64: arm64
+prometheus_arch: "{{ prometheus_arch_map[ansible_architecture] }}"
+prometheus_checksum_amd64: "sha256:7a6b6d5ea003e8d59def294392c64e28338da627bf760cf268e788d6a8832a23"
+prometheus_checksum_arm64: "sha256:29965342c79cccba08d28ea530baa38d21d9e6a02e78a565cd59656df6f406c7"
+prometheus_checksum: "{{ prometheus_checksum_arm64 if ansible_architecture == 'aarch64' else prometheus_checksum_amd64 }}"
+prometheus_download_url: >-
+  https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/prometheus-{{ prometheus_version }}.linux-{{ prometheus_arch }}.tar.gz
+
+# TLS - server cert for Prometheus web UI + CA cert for verifying scrape targets
+prometheus_tls_dir: "{{ prometheus_config_dir }}/tls"
+prometheus_tls_ca_cert: "{{ prometheus_tls_dir }}/ca.crt"
+prometheus_tls_cert: "{{ prometheus_tls_dir }}/prometheus.crt"
+prometheus_tls_key: "{{ prometheus_tls_dir }}/prometheus.key"
+
+# CA - shared local CA used to sign internal TLS certs (see roles/ca)
+prometheus_pki_ca_cert: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca/ca.crt"
+
+# Basic auth - username Grafana/Alertmanager use to authenticate to Prometheus API
+# Password stored as bcrypt hash in vault (vault_prometheus_basic_auth_password_hash)
+prometheus_basic_auth_user: prometheus

@@ -72,10 +72,13 @@
     common_name: "{{ ca_node_cert_cn }}"
     subject_alt_name: >-
       {{
-        ['DNS:' + inventory_hostname] +
+        ['DNS:' + inventory_hostname, 'DNS:localhost', 'IP:127.0.0.1'] +
         (['IP:' + ansible_host]
           if ansible_host | ansible.utils.ipaddr
-          else [])
+          else []) +
+        (['DNS:' + hostvars[inventory_hostname].tailscale_hostname + '.' + tailscale_tailnet_suffix]
+           if (hostvars[inventory_hostname].tailscale_hostname | default('')) and (tailscale_tailnet_suffix | default(''))
+           else [])
       }}
     state: present
   delegate_to: localhost

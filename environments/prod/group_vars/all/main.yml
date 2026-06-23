@@ -1,3 +1,4 @@
 ---
 env_name: prod
 tailscale_cgnat_range: "100.64.0.0/10"
+tailscale_tailnet_suffix: "{{ vault_tailscale_tailnet_suffix }}"

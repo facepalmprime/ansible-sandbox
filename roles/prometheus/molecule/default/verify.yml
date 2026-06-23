@@ -1,0 +1,86 @@
+---
+- name: Verify Prometheus
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Check Prometheus binary exists
+      ansible.builtin.stat:
+        path: /usr/local/bin/prometheus
+      register: prometheus_bin
+
+    - name: Assert binary present and executable
+      ansible.builtin.assert:
+        that: prometheus_bin.stat.exists and prometheus_bin.stat.executable
+        fail_msg: "prometheus binary missing"
+
+    - name: Check prometheus user is nologin
+      ansible.builtin.getent:
+        database: passwd
+        key: prometheus
+      register: prometheus_user_getent
+
+    - name: Assert nologin shell
+      ansible.builtin.assert:
+        that: "'/nologin' in prometheus_user_getent.ansible_facts.getent_passwd.prometheus[5]"
+        fail_msg: "prometheus user does not have nologin shell"
+
+    - name: Check config file present
+      ansible.builtin.stat:
+        path: /etc/prometheus/prometheus.yml
+      register: prometheus_config
+
+    - name: Assert config present
+      ansible.builtin.assert:
+        that: prometheus_config.stat.exists
+        fail_msg: "prometheus.yml not found"
+
+    - name: Check web-config present
+      ansible.builtin.stat:
+        path: /etc/prometheus/web-config.yml
+      register: prometheus_webconfig
+
+    - name: Assert web-config present
+      ansible.builtin.assert:
+        that: prometheus_webconfig.stat.exists
+        fail_msg: "web-config.yml not found"
+
+    - name: Check TLS cert present
+      ansible.builtin.stat:
+        path: /etc/prometheus/tls/prometheus.crt
+      register: prometheus_cert
+
+    - name: Assert TLS cert present
+      ansible.builtin.assert:
+        that: prometheus_cert.stat.exists
+        fail_msg: "prometheus.crt not found"
+
+    - name: Check alert rules file present
+      ansible.builtin.stat:
+        path: /etc/prometheus/alerts/node.yml
+      register: prometheus_alerts
+
+    - name: Assert alert rules present
+      ansible.builtin.assert:
+        that: prometheus_alerts.stat.exists
+        fail_msg: "node.yml alert rules not found"
+
+    - name: Gather service facts
+      ansible.builtin.service_facts:
+
+    - name: Assert prometheus service is active
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.services['prometheus.service'] is defined
+          - ansible_facts.services['prometheus.service']['state'] == 'running'
+        fail_msg: "prometheus service not running"
+
+    - name: Verify HTTPS endpoint responds
+      ansible.builtin.uri:
+        url: "https://localhost:9090/-/healthy"
+        validate_certs: false
+        url_username: "prometheus"
+        url_password: "{{ vault_prometheus_basic_auth_plaintext }}"
+        force_basic_auth: true
+        status_code: 200
+      when: env_name != 'molecule'
+      no_log: true
