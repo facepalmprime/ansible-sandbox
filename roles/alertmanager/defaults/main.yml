@@ -1,0 +1,35 @@
+---
+alertmanager_version: "0.27.0"
+alertmanager_user: alertmanager
+alertmanager_group: alertmanager
+alertmanager_binary: /usr/local/bin/alertmanager
+alertmanager_config_dir: /etc/alertmanager
+alertmanager_data_dir: /var/lib/alertmanager
+alertmanager_port: 9093
+
+# Architecture - selects current binary at runtime
+alertmanager_arch_map:
+  x86_64: amd64
+  aarch64: arm64
+alertmanager_arch: "{{ alertmanager_arch_map[ansible_architecture] }}"
+alertmanager_checksum_amd64: "sha256:23c3f5a3c73de91dbaec419f3c492bef636deb02680808e5d842e6553aa16074"
+alertmanager_checksum_arm64: "sha256:a754304b682cec61f4bd5cfc029b451a30134554b3a2f21a9c487e12814ff8f3"
+alertmanager_checksum: "{{ alertmanager_checksum_arm64 if ansible_architecture == 'aarch64' else alertmanager_checksum_amd64 }}"
+alertmanager_download_url: >-
+  https://github.com/prometheus/alertmanager/releases/download/v{{ alertmanager_version
+  }}/alertmanager-{{ alertmanager_version }}.linux-{{ alertmanager_arch }}.tar.gz
+
+# TLS - server cert for Alertmanager's web UI/API
+alertmanager_tls_dir: "{{ alertmanager_config_dir }}/tls"
+alertmanager_tls_ca_cert: "{{ alertmanager_tls_dir }}/ca.crt"
+alertmanager_tls_cert: "{{ alertmanager_tls_dir }}/alertmanager.crt"
+alertmanager_tls_key: "{{ alertmanager_tls_dir }}/alertmanager.key"
+alertmanager_pki_ca_cert: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca/ca.crt"
+
+alertmanager_slack_webhook_url: "{{ vault_alertmanager_slack_webhook_url }}"
+alertmanager_slack_channel: "#alerts"
+alertmanager_smtp_from: "{{ vault_alertmanager_smtp_user }}"
+alertmanager_smtp_smarthost: "{{ vault_alertmanager_smtp_host }}:{{ vault_alertmanager_smtp_port }}"
+alertmanager_smtp_auth_username: "{{ vault_alertmanager_smtp_user }}"
+alertmanager_smtp_auth_password: "{{ vault_alertmanager_smtp_password }}"
+alertmanager_email_to: "{{ vault_alertmanager_email_to }}"

@@ -1,0 +1,159 @@
+---
+- name: Create alertmanager group
+  ansible.builtin.group:
+    name: "{{ alertmanager_group }}"
+    system: true
+    state: present
+
+- name: Create alertmanager user
+  ansible.builtin.user:
+    name: "{{ alertmanager_user }}"
+    group: "{{ alertmanager_group }}"
+    shell: /sbin/nologin
+    system: true
+    create_home: false
+    comment: Prometheus Alertmanager
+
+- name: Create alertmanager directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ alertmanager_user }}"
+    group: "{{ alertmanager_group }}"
+    mode: "0750"
+  loop:
+    - "{{ alertmanager_config_dir }}"
+    - "{{ alertmanager_data_dir }}"
+    - "{{ alertmanager_tls_dir }}"
+
+- name: Deploy CA cert
+  ansible.builtin.copy:
+    src: "{{ alertmanager_pki_ca_cert }}"
+    dest: "{{ alertmanager_tls_ca_cert }}"
+    owner: root
+    group: "{{ alertmanager_group }}"
+    mode: "0640"
+
+- name: Deploy Alertmanager TLS certificate
+  ansible.builtin.copy:
+    src: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca/{{ inventory_hostname }}.crt"
+    dest: "{{ alertmanager_tls_cert }}"
+    owner: root
+    group: "{{ alertmanager_group }}"
+    mode: "0640"
+  notify: Restart alertmanager
+
+- name: Deploy Alertmanager TLS key
+  ansible.builtin.copy:
+    src: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca/{{ inventory_hostname }}.key"
+    dest: "{{ alertmanager_tls_key }}"
+    owner: root
+    group: "{{ alertmanager_group }}"
+    mode: "0640"
+  notify: Restart alertmanager
+
+- name: Deploy web-config.yml
+  ansible.builtin.template:
+    src: web-config.yml.j2
+    dest: "{{ alertmanager_config_dir }}/web-config.yml"
+    owner: root
+    group: "{{ alertmanager_group }}"
+    mode: "0640"
+  notify: Restart alertmanager
+
+- name: Download alertmanager archive
+  ansible.builtin.get_url:
+    url: "{{ alertmanager_download_url }}"
+    dest: "/tmp/alertmanager-{{ alertmanager_version }}.linux-{{ alertmanager_arch }}.tar.gz"
+    checksum: "{{ alertmanager_checksum }}"
+    mode: "0644"
+
+- name: Extract alertmanager archive
+  ansible.builtin.unarchive:
+    src: "/tmp/alertmanager-{{ alertmanager_version }}.linux-{{ alertmanager_arch }}.tar.gz"
+    dest: /tmp/
+    remote_src: true
+    creates: "/tmp/alertmanager-{{ alertmanager_version }}.linux-{{ alertmanager_arch }}/alertmanager"
+
+- name: Install alertmanager binary
+  ansible.builtin.copy:
+    src: "/tmp/alertmanager-{{ alertmanager_version }}.linux-{{ alertmanager_arch }}/alertmanager"
+    dest: "{{ alertmanager_binary }}"
+    owner: root
+    group: root
+    mode: "0755"
+    remote_src: true
+  notify: Restart alertmanager
+
+- name: Deploy alertmanager config
+  ansible.builtin.template:
+    src: alertmanager.yml.j2
+    dest: "{{ alertmanager_config_dir }}/alertmanager.yml"
+    owner: "{{ alertmanager_user }}"
+    group: "{{ alertmanager_group }}"
+    mode: "0640"
+  notify: Restart alertmanager
+
+- name: Deploy alertmanager systemd unit
+  ansible.builtin.template:
+    src: alertmanager.service.j2
+    dest: /etc/systemd/system/alertmanager.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart alertmanager
+
+- name: Install firewalld on Rocky
+  ansible.builtin.package:
+    name:
+      - firewalld
+      - python3-firewall
+    state: present
+  when: ansible_os_family == 'RedHat'
+
+- name: Ensure firewalld is running
+  ansible.builtin.systemd:
+    name: firewalld
+    state: started
+    enabled: true
+  when:
+    - ansible_os_family == 'RedHat'
+    - env_name != 'molecule'
+
+- name: Allow alertmanager port via firewalld
+  ansible.posix.firewalld:
+    rich_rule: "rule family='ipv4' source address='127.0.0.1' port protocol='tcp' port='{{ alertmanager_port }}' accept "
+    permanent: true
+    state: enabled
+    immediate: true
+  when:
+    - ansible_os_family == 'RedHat'
+    - env_name != 'molecule'
+
+- name: Allow alertmanager port via ufw
+  community.general.ufw:
+    rule: allow
+    port: "{{ alertmanager_port }}"
+    proto: tcp
+    src: "127.0.0.1"
+  when:
+    - ansible_os_family == 'Debian'
+    - env_name != 'molecule'
+
+- name: Allow alertmanager port in SELinux
+  community.general.seport:
+    ports: "{{ alertmanager_port }}"
+    proto: tcp
+    setype: http_port_t
+    state: present
+  when:
+    - ansible_os_family == 'RedHat'
+    - ansible_selinux.status == 'enabled'
+    - env_name != 'molecule'
+
+- name: Enable and start alertmanager
+  ansible.builtin.systemd:
+    name: alertmanager
+    state: started
+    enabled: true
+    daemon_reload: true

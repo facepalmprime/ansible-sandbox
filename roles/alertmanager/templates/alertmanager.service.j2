@@ -1,0 +1,28 @@
+[Unit]
+Description=Prometheus Alertmanager
+Documentation=https://prometheus.io/docs/alerting/alertmanager/
+After=network-online.target
+
+[Service]
+User={{ alertmanager_user }}
+Group={{ alertmanager_group }}
+ExecStart={{ alertmanager_binary }} \
+  --config.file={{ alertmanager_config_dir }}/alertmanager.yml \
+  --web.config.file={{ alertmanager_config_dir }}/web-config.yml \
+  --storage.path={{ alertmanager_data_dir }} \
+  --web.listen-address=127.0.0.1:{{ alertmanager_port }}
+
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=true
+PrivateDevices=true
+ReadWritePaths={{ alertmanager_data_dir }}
+ReadOnlyPaths={{ alertmanager_config_dir }}
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

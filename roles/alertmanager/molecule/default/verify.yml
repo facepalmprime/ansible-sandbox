@@ -1,0 +1,59 @@
+---
+- name: Verify Alertmanager
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Check alertmanager binary exists
+      ansible.builtin.stat:
+        path: /usr/local/bin/alertmanager
+      register: alertmanager_bin
+
+    - name: Assert binary present
+      ansible.builtin.assert:
+        that: alertmanager_bin.stat.exists and alertmanager_bin.stat.executable
+        fail_msg: "alertmanager binary missing"
+
+    - name: Check alertmanager user exists
+      ansible.builtin.command:
+        cmd: id alertmanager
+      changed_when: false
+
+    - name: Check config file present
+      ansible.builtin.stat:
+        path: /etc/alertmanager/alertmanager.yml
+      register: alertmanager_config
+
+    - name: Assert config present
+      ansible.builtin.assert:
+        that: alertmanager_config.stat.exists
+        fail_msg: "alertmanager config not found"
+
+    - name: Check TLS cert present
+      ansible.builtin.stat:
+        path: /etc/alertmanager/tls/alertmanager.crt
+      register: alertmanager_cert
+
+    - name: Assert TLS cert present
+      ansible.builtin.assert:
+        that: alertmanager_cert.stat.exists
+        fail_msg: "alertmanager TLS cert not found"
+
+    - name: Check web-config.yml present
+      ansible.builtin.stat:
+        path: /etc/alertmanager/web-config.yml
+      register: alertmanager_webconfig
+
+    - name: Assert web-config present
+      ansible.builtin.assert:
+        that: alertmanager_webconfig.stat.exists
+        fail_msg: "alertmanager web-config.yml not found"
+
+    - name: Gather service facts
+      ansible.builtin.service_facts:
+
+    - name: Assert alertmanager service is active and enabled
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.services['alertmanager.service'].state == 'running'
+          - ansible_facts.services['alertmanager.service'].status == 'enabled'
+        fail_msg: "alertmanager service not active or not enabled"
