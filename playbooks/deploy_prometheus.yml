@@ -1,5 +1,5 @@
 ---
 - name: Deploy prometheus
-  hosts: all
+  hosts: monitoring
   roles:
     - role: prometheus

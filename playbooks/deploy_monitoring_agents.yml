@@ -1,0 +1,8 @@
+---
+- name: Deploy monitoring agents
+  hosts: monitored
+  become: true
+  roles:
+    - role: tailscale
+    - role: node_exporter
+    - role: promtail

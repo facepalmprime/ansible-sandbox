@@ -1,0 +1,9 @@
+---
+- name: Deploy monitoring stack
+  hosts: monitoring
+  become: true
+  roles:
+    - role: loki
+    - role: prometheus
+    - role: alertmanager
+    - role: grafana

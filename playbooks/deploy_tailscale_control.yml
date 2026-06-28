@@ -1,0 +1,10 @@
+---
+- name: Install Tailscale on control node
+  hosts: localhost
+  connection: local
+  become: true
+  vars:
+    tailscale_hostname: "control"
+    env_name: "prod"
+  roles:
+    - role: tailscale

@@ -3,3 +3,7 @@ env_name: prod
 tailscale_cgnat_range: "100.64.0.0/10"
 tailscale_tailnet_suffix: "{{ vault_tailscale_tailnet_suffix }}"
 prometheus_basic_auth_user: prometheus
+
+# Loki endpoint - HTTPS via Tailscale MagicDNS (no hardcoded IP or tailnet ID)
+loki_url: >-
+  https://{{ hostvars['aws-monitoring'].tailscale_hostname }}.{{ tailscale_tailnet_suffix }}:3100

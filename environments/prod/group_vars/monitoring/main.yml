@@ -4,7 +4,3 @@ env_name: prod
 ansible_user: rocky
 ansible_python_interpreter: /usr/bin/python3
 ansible_ssh_private_key_file: "{{ lookup('env', 'HOME') }}/.ssh/ansible-monitoring.pem"
-
-# Loki endpoint - HTTPS via Tailscale MagicDNS (no hardcoded IP or tailnet ID)
-loki_url: >-
-  https://{{ hostvars['aws-monitoring'].tailscale_hostname }}.{{ tailscale_tailnet_suffix }}:3100
