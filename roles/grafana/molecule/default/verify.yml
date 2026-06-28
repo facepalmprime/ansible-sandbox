@@ -1,0 +1,68 @@
+---
+- name: Verify Grafana
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: Check grafana binary exists
+      ansible.builtin.stat:
+        path: /usr/local/bin/grafana
+      register: grafana_bin
+
+    - name: Assert binary present
+      ansible.builtin.assert:
+        that: grafana_bin.stat.exists and grafana_bin.stat.executable
+        fail_msg: "grafana binary missing"
+
+    - name: Check grafana user
+      ansible.builtin.getent:
+        database: passwd
+        key: grafana
+      register: grafana_user_info
+
+    - name: Assert grafana user is nologin
+      ansible.builtin.assert:
+        that: >
+          '/sbin/nologin' in
+          grafana_user_info.ansible_facts.getent_passwd['grafana'][5] or
+          '/usr/sbin/nologin' in
+          grafana_user_info.ansible_facts.getent_passwd['grafana'][5]
+        fail_msg: "grafana user shell is not nologin"
+
+    - name: Check grafana config present
+      ansible.builtin.stat:
+        path: /etc/grafana/grafana.ini
+      register: grafana_config
+
+    - name: Assert config present
+      ansible.builtin.assert:
+        that: grafana_config.stat.exists
+        fail_msg: "grafana.ini not found"
+
+    - name: Check datasource provisioning present
+      ansible.builtin.stat:
+        path: /etc/grafana/provisioning/datasources/prometheus.yml
+      register: grafana_ds
+
+    - name: Assert datasource present
+      ansible.builtin.assert:
+        that: grafana_ds.stat.exists
+        fail_msg: "prometheus datasource provisioning file missing"
+
+    - name: Gather service facts
+      ansible.builtin.service_facts:
+
+    - name: Show grafana journal output
+      ansible.builtin.command:
+        cmd: journalctl -u grafana --no-pager -n 30
+      register: grafana_journal
+      failed_when: false
+      changed_when: false
+
+    - name: Show grafana journal
+      ansible.builtin.debug:
+        var: grafana_journal.stdout_lines
+
+    - name: Assert grafana service active
+      ansible.builtin.assert:
+        that: ansible_facts.services['grafana.service'].state == 'running'
+        fail_msg: "grafana is not running"

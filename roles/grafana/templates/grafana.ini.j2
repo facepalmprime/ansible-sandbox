@@ -1,0 +1,17 @@
+[server]
+protocol = https
+http_port = {{ grafana_port }}
+domain = {{ grafana_domain }}
+cert_file = {{ grafana_tls_cert }}
+cert_key = {{ grafana_tls_key }}
+
+[security]
+admin_user = {{ grafana_admin_user }}
+admin_password = {{ grafana_admin_password }}
+
+[paths]
+data = {{ grafana_data_dir }}
+provisioning = {{ grafana_config_dir }}/provisioning
+
+[datasources]
+datasource_limit = 5000

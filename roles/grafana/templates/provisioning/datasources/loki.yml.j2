@@ -1,0 +1,15 @@
+apiVersion: 1
+datasources:
+  - name: Loki
+    type: loki
+    access: proxy
+    url: "{{ grafana_loki_url }}"
+    editable: false
+    jsonData:
+      maxLines: 1000
+      tlsAuth: true
+    secureJsonData:
+      tlsClientCert: |
+        {{ lookup('file', lookup('env', 'HOME') + '/.ansible-sandbox-ca/' + inventory_hostname + '.crt') | indent(8) }}
+      tlsClientKey: |
+        {{ lookup('file', lookup('env', 'HOME') + '/.ansible-sandbox-ca/' + inventory_hostname + '.key') | indent(8) }}

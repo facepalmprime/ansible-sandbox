@@ -4,7 +4,7 @@ dependency:
 driver:
   name: podman
 platforms:
-  - name: rocky9-prometheus-test
+  - name: rocky9-grafana-test
     image: geerlingguy/docker-rockylinux9-ansible:latest
     pre_build_image: true
     privileged: false
@@ -13,7 +13,7 @@ platforms:
       - SYS_ADMIN
     command: /usr/sbin/init
 
-  - name: ubuntu22-prometheus-test
+  - name: ubuntu22-grafana-test
     image: geerlingguy/docker-ubuntu2204-ansible:latest
     pre_build_image: true
     privileged: false
@@ -32,6 +32,7 @@ provisioner:
       all:
         ansible_python_interpreter: /usr/bin/python3
         env_name: molecule
+        grafana_loki_url: "https://mock-loki.example.com:3100"
         prometheus_basic_auth_user: "prometheus"
 verifier:
   name: ansible

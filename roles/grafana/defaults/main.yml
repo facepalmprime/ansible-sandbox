@@ -1,0 +1,33 @@
+---
+grafana_version: "13.1.0"
+grafana_user: grafana
+grafana_group: grafana
+grafana_binary: /usr/local/bin/grafana
+grafana_config_dir: /etc/grafana
+grafana_data_dir: /var/lib/grafana
+grafana_port: 3000
+grafana_domain: "{{ ansible_host }}"
+
+grafana_arch_map:
+  x86_64: amd64
+  aarch64: arm64
+grafana_arch: "{{ grafana_arch_map[ansible_architecture] }}"
+grafana_checksum: "{{ grafana_checksum_arm64 if grafana_arch == 'arm64' else grafana_checksum_amd64 }}"
+grafana_checksum_arm64: "sha256:d5f98305792b917b173320d5fde6b394685ae5df179ae9f9a8f22b56436b389a"
+grafana_checksum_amd64: "sha256:4f562bb224b8bb758b47789381babb284cb41687da8d714f2ff0e118e945e775"
+grafana_download_url: >-
+  https://dl.grafana.com/oss/release/grafana-{{ grafana_version }}.linux-{{ grafana_arch }}.tar.gz
+
+grafana_admin_user: admin
+grafana_admin_password: "{{ vault_grafana_admin_password }}"
+
+grafana_pki_ca_cert: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca/ca.crt"
+grafana_tls_dir: "{{ grafana_config_dir }}/certs"
+grafana_tls_cert: "{{ grafana_tls_dir }}/grafana.crt"
+grafana_tls_key: "{{ grafana_tls_dir }}/grafana.key"
+grafana_tls_ca_cert: "{{ grafana_tls_dir }}/ca.crt"
+
+# Prometheus is on localhost; Loki binds to Tailscale IP only
+grafana_prometheus_url: "https://localhost:9090"
+grafana_loki_url: >-
+  https://{{ hostvars[inventory_hostname].tailscale_hostname }}.{{ tailscale_tailnet_suffix }}:3100

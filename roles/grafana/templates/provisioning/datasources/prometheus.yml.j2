@@ -1,0 +1,15 @@
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: {{ grafana_prometheus_url }}
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: "15s"
+      tlsSkipVerify: false
+      basicAuth: true
+      basicAuthUser: "{{ prometheus_basic_auth_user }}"
+    secureJsonData:
+      basicAuthPassword: "{{ vault_prometheus_basic_auth_plaintext }}"

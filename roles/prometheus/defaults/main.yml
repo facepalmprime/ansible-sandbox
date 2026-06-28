@@ -30,7 +30,3 @@ prometheus_tls_key: "{{ prometheus_tls_dir }}/prometheus.key"
 
 # CA - shared local CA used to sign internal TLS certs (see roles/ca)
 prometheus_pki_ca_cert: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca/ca.crt"
-
-# Basic auth - username Grafana/Alertmanager use to authenticate to Prometheus API
-# Password stored as bcrypt hash in vault (vault_prometheus_basic_auth_password_hash)
-prometheus_basic_auth_user: prometheus

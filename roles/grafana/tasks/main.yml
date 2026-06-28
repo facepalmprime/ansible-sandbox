@@ -1,0 +1,226 @@
+---
+- name: Create grafana group
+  ansible.builtin.group:
+    name: "{{ grafana_group }}"
+    system: true
+    state: present
+
+- name: Create grafana user
+  ansible.builtin.user:
+    name: "{{ grafana_user }}"
+    group: "{{ grafana_group }}"
+    shell: /sbin/nologin
+    system: true
+    create_home: false
+    comment: Grafana dashboard server
+
+- name: Create grafana directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ grafana_user }}"
+    group: "{{ grafana_group }}"
+    mode: "0750"
+  loop:
+    - "{{ grafana_config_dir }}"
+    - "{{ grafana_data_dir }}"
+    - "{{ grafana_config_dir }}/provisioning"
+    - "{{ grafana_config_dir }}/provisioning/datasources"
+    - "{{ grafana_config_dir }}/provisioning/dashboards"
+    - "{{ grafana_data_dir }}/dashboards"
+    - "{{ grafana_tls_dir }}"
+
+- name: Deploy CA cert
+  ansible.builtin.copy:
+    src: "{{ grafana_pki_ca_cert }}"
+    dest: "{{ grafana_tls_ca_cert }}"
+    owner: root
+    group: "{{ grafana_group }}"
+    mode: "0640"
+
+- name: Install CA cert into system trust store
+  ansible.builtin.copy:
+    src: "{{ grafana_pki_ca_cert }}"
+    dest: "{{
+      '/etc/pki/ca-trust/source/anchors/ansible-sandbox-ca.crt' if
+      ansible_os_family == 'RedHat' else
+      '/usr/local/share/ca-certificates/ansible-sandbox-ca.crt' }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Update CA trust
+
+- name: Deploy Grafana TLS certificate
+  ansible.builtin.copy:
+    src: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca/{{ inventory_hostname }}.crt"
+    dest: "{{ grafana_tls_cert }}"
+    owner: root
+    group: "{{ grafana_group }}"
+    mode: "0640"
+  notify: Restart grafana
+
+- name: Deploy Grafana TLS key
+  ansible.builtin.copy:
+    src: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca/{{ inventory_hostname }}.key"
+    dest: "{{ grafana_tls_key }}"
+    owner: root
+    group: "{{ grafana_group }}"
+    mode: "0640"
+  notify: Restart grafana
+
+- name: Deploy Prometheus datasources
+  ansible.builtin.template:
+    src: provisioning/datasources/prometheus.yml.j2
+    dest: "{{ grafana_config_dir }}/provisioning/datasources/prometheus.yml"
+    owner: "{{ grafana_user }}"
+    group: "{{ grafana_group }}"
+    mode: "0640"
+  notify: Restart grafana
+
+- name: Deploy Loki datasource
+  ansible.builtin.template:
+    src: provisioning/datasources/loki.yml.j2
+    dest: "{{ grafana_config_dir }}/provisioning/datasources/loki.yml"
+    owner: "{{ grafana_user }}"
+    group: "{{ grafana_group }}"
+    mode: "0640"
+  notify: Restart grafana
+
+- name: Deploy dashboard provisioning config
+  ansible.builtin.copy:
+    src: provisioning/dashboards/dashboards.yml
+    dest: "{{ grafana_config_dir }}/provisioning/dashboards/dashboards.yml"
+    owner: "{{ grafana_user }}"
+    group: "{{ grafana_group }}"
+    mode: "0640"
+  notify: Restart grafana
+
+- name: Deploy node overview dashboard
+  ansible.builtin.copy:
+    src: provisioning/dashboards/node-overview.json
+    dest: "{{ grafana_data_dir }}/dashboards/node-overview.json"
+    owner: "{{ grafana_user }}"
+    group: "{{ grafana_group }}"
+    mode: "0640"
+
+- name: Download grafana archive
+  ansible.builtin.get_url:
+    url: "{{ grafana_download_url }}"
+    dest: "/tmp/grafana-{{ grafana_version }}.linux-{{ grafana_arch }}.tar.gz"
+    checksum: "{{ grafana_checksum }}"
+    mode: "0644"
+
+- name: Extract grafana archive
+  ansible.builtin.unarchive:
+    src: "/tmp/grafana-{{ grafana_version }}.linux-{{ grafana_arch }}.tar.gz"
+    dest: /tmp/
+    remote_src: true
+    creates: "/tmp/grafana-{{ grafana_version }}/bin/grafana"
+
+- name: Install grafana binary
+  ansible.builtin.copy:
+    src: "/tmp/grafana-{{ grafana_version }}/bin/grafana"
+    dest: "{{ grafana_binary }}"
+    owner: root
+    group: root
+    mode: "0755"
+    remote_src: true
+  notify: Restart grafana
+
+- name: Create grafana home directory
+  ansible.builtin.file:
+    path: /usr/local/share/grafana
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install grafana public assets
+  ansible.builtin.copy:
+    src: "/tmp/grafana-{{ grafana_version }}/public"
+    dest: /usr/local/share/grafana
+    owner: root
+    group: root
+    mode: preserve
+    remote_src: true
+
+- name: Install grafana conf directory
+  ansible.builtin.copy:
+    src: "/tmp/grafana-{{ grafana_version }}/conf"
+    dest: /usr/local/share/grafana
+    owner: root
+    group: root
+    mode: preserve
+    remote_src: true
+
+- name: Deploy grafana.ini
+  ansible.builtin.template:
+    src: grafana.ini.j2
+    dest: "{{ grafana_config_dir }}/grafana.ini"
+    owner: "{{ grafana_user }}"
+    group: "{{ grafana_group }}"
+    mode: "0640"
+  notify: Restart grafana
+
+- name: Deploy grafana systemd unit
+  ansible.builtin.template:
+    src: grafana.service.j2
+    dest: /etc/systemd/system/grafana.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart grafana
+
+- name: Install firewalld on Rocky
+  ansible.builtin.package:
+    name:
+      - firewalld
+      - python3-firewall
+    state: present
+  when: ansible_os_family == 'RedHat'
+
+- name: Ensure firewalld is running
+  ansible.builtin.systemd:
+    name: firewalld
+    state: started
+    enabled: true
+  when:
+    - ansible_os_family == 'RedHat'
+    - env_name != 'molecule'
+
+- name: Allow grafana port via firewalld
+  ansible.posix.firewalld:
+    port: "{{ grafana_port }}/tcp"
+    permanent: true
+    state: enabled
+    immediate: true
+  when:
+    - ansible_os_family == 'RedHat'
+    - env_name != 'molecule'
+
+- name: Allow grafana port via ufw
+  community.general.ufw:
+    rule: allow
+    port: "{{ grafana_port }}"
+    proto: tcp
+  when:
+    - ansible_os_family == 'Debian'
+    - env_name != 'molecule'
+
+- name: Allow grafana port in SELinux
+  community.general.seport:
+    ports: "{{ grafana_port }}"
+    proto: tcp
+    setype: http_port_t
+    state: present
+  when:
+    - ansible_os_family == 'RedHat'
+    - ansible_selinux.status == 'enabled'
+    - env_name != 'molecule'
+
+- name: Enable and start grafana
+  ansible.builtin.systemd:
+    name: grafana
+    state: started
+    enabled: true
+    daemon_reload: true
