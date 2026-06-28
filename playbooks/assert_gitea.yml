@@ -43,9 +43,10 @@
         timeout: 30
         state: started
 
-    - name: Assert Gitea HTTP response
+    - name: Assert Gitea HTTPS response
       ansible.builtin.uri:
-        url: "http://127.0.0.1:3000"
+        url: "https://127.0.0.1:3000"
+        ca_path: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca/ca.crt"
         status_code: 200
         timeout: 30
-      register: http_check
+      register: gitea_https_check
