@@ -4,18 +4,27 @@
     path: /etc/systemd/system/jellyfin.service.d
     state: absent
 
+- name: Install podman (Ubuntu)
+  ansible.builtin.apt:
+    name: podman
+    state: present
+    update_cache: true
+  when: ansible_os_family == 'Debian'
+
 - name: Install SELinux policy build tools
   ansible.builtin.dnf:
     name:
       - checkpolicy
       - policycoreutils-python-utils
     state: present
+  when: ansible_os_family == 'RedHat'
 
 - name: Ensure SELinux local policy exists
   ansible.builtin.file:
     path: /etc/selinux/targeted/local
     state: directory
     mode: "0755"
+  when: ansible_os_family == 'RedHat'
 
 - name: Copy jellyfin SELinux policy source
   ansible.builtin.copy:
@@ -23,7 +32,9 @@
     dest: /etc/selinux/targeted/local/jellyfin-container.te
     mode: "0644"
   register: jellyfin_selinux_te
-  when: env_name != 'molecule'
+  when:
+    - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
 
 - name: Compile jellyfin SELinux policy module
   ansible.builtin.command:
@@ -31,6 +42,7 @@
   when:
     - jellyfin_selinux_te.changed
     - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
   changed_when: true
 
 
@@ -40,6 +52,7 @@
   when:
     - jellyfin_selinux_te.changed
     - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
   changed_when: true
 
 - name: Install jellyfin SELinux policy module
@@ -48,6 +61,7 @@
   when:
     - jellyfin_selinux_te.changed
     - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
   changed_when: true
 
 - name: Add container storage fcontext rule
@@ -56,13 +70,17 @@
   register: jellyfin_fcontext_add
   changed_when: jellyfin_fcontext_add.rc == 0 and 'already defined' not in jellyfin_fcontext_add.stderr
   failed_when: jellyfin_fcontext_add.rc != 0 and 'already defined' not in jellyfin_fcontext_add.stderr
-  when: env_name != 'molecule'
+  when:
+    - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
 
 - name: Apply container storage fcontext labels
   ansible.builtin.command:
     cmd: restorecon -R /var/lib/containers/storage/
   changed_when: false
-  when: env_name != 'molecule'
+  when:
+    - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
 
 - name: Add jellyfin config fcontext rule
   ansible.builtin.command:
@@ -70,7 +88,9 @@
   register: jellyfin_fcontext_config
   changed_when: jellyfin_fcontext_config.rc == 0 and 'already defined' not in jellyfin_fcontext_config.stderr
   failed_when: jellyfin_fcontext_config.rc != 0 and 'already defined' not in jellyfin_fcontext_config.stderr
-  when: env_name != 'molecule'
+  when:
+    - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
 
 - name: Add jellyfin cache fcontext rule
   ansible.builtin.command:
@@ -78,7 +98,9 @@
   register: jellyfin_fcontext_cache
   changed_when: jellyfin_fcontext_cache.rc == 0 and 'already defined' not in jellyfin_fcontext_cache.stderr
   failed_when: jellyfin_fcontext_cache.rc != 0 and 'already defined' not in jellyfin_fcontext_cache.stderr
-  when: env_name != 'molecule'
+  when:
+    - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
 
 - name: Apply jellyfin fcontext labels
   ansible.builtin.command:
@@ -86,7 +108,9 @@
   register: jellyfin_restorecon_result
   changed_when: false
   failed_when: jellyfin_restorecon_result.rc != 0 and 'No such file or directory' not in jellyfin_restorecon_result.stderr
-  when: env_name != 'molecule'
+  when:
+    - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
 
 - name: Add jellyfin media fcontext rule
   ansible.builtin.command:
@@ -94,7 +118,9 @@
   register: jellyfin_fcontext_media
   changed_when: jellyfin_fcontext_media.rc == 0 and 'already defined' not in jellyfin_fcontext_media.stderr
   failed_when: jellyfin_fcontext_media.rc != 0 and 'already defined' not in jellyfin_fcontext_media.stderr
-  when: env_name != 'molecule'
+  when:
+    - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
 
 - name: Create jellyfin group
   ansible.builtin.group:
@@ -206,6 +232,36 @@
   changed_when: false
   when: env_name != 'molecule'
 
+- name: Check if Jellyfin system.xml exists
+  ansible.builtin.stat:
+    path: "{{ jellyfin_config_dir }}/config/system.xml"
+  register: jellyfin_system_xml
+
+- name: Deploy Jellyfin HTTPS config
+  ansible.builtin.template:
+    src: system.xml.j2
+    dest: "{{ jellyfin_config_dir }}/config/system.xml"
+    owner: jellyfin
+    group: jellyfin
+    mode: "0640"
+  when: not jellyfin_system_xml.stat.exists
+  notify: Restart jellyfin
+
+- name: Check if Jellyfin network.xml exists
+  ansible.builtin.stat:
+    path: "{{ jellyfin_config_dir }}/config/network.xml"
+  register: jellyfin_network_xml
+
+- name: Deploy Jellyfin network config (HTTPS)
+  ansible.builtin.template:
+    src: network.xml.j2
+    dest: "{{ jellyfin_config_dir }}/config/network.xml"
+    owner: jellyfin
+    group: jellyfin
+    mode: "0640"
+  when: not jellyfin_network_xml.stat.exists
+  notify: Restart jellyfin
+
 - name: Deploy Jellyfin container systemd unit
   ansible.builtin.template:
     src: jellyfin-container.service.j2
@@ -223,22 +279,24 @@
     daemon_reload: true
   when: env_name != 'molecule'
 
-- name: Open firewall for Jellyfin HTTP
-  ansible.posix.firewalld:
-    port: "{{ jellyfin_http_port }}/tcp"
-    state: enabled
-    permanent: true
-    immediate: true
-  when: env_name != 'molecule'
-
 - name: Open firewall for Jellyfin HTTPS
   ansible.posix.firewalld:
     port: "{{ jellyfin_https_port }}/tcp"
     state: enabled
     permanent: true
     immediate: true
-  when: env_name != 'molecule'
+  when:
+    - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
 
+- name: Allow Jellyfin HTTPS port (Ubuntu)
+  community.general.ufw:
+    rule: allow
+    port: "{{ jellyfin_https_port }}"
+    proto: tcp
+  when:
+    - env_name != 'molecule'
+    - ansible_os_family == 'Debian'
 
 - name: Check for SELinux AVC denials related to jellyfin
   ansible.builtin.command:
@@ -246,12 +304,15 @@
   register: jellyfin_selinux_avc
   changed_when: false
   failed_when: false
-  when: env_name != 'molecule'
+  when:
+    - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
 
 - name: Report any SELinux denials for jellyfin
   ansible.builtin.debug:
     msg: "SELinux AVC denials for jellyfin - review before proceeding: {{ jellyfin_selinux_avc.stdout }}"
   when:
     - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
     - jellyfin_selinux_avc.rc == 0
     - jellyfin_selinux_avc.stdout | length > 0

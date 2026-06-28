@@ -17,7 +17,7 @@ ExecStart=/usr/bin/podman run \
     --name jellyfin \
     --user {{ jellyfin_uid }}:{{ jellyfin_gid }} \
     --security-opt label=type:jellyfin_container_t \
-    --security-opt no-new-privileges:true \
+    --security-opt no-new-privileges \
     --read-only \
     --tmpfs /tmp:rw,nosuid,nodev,size=512m \
     --tmpfs /run:rw,nosuid,nodev,size=64m \
