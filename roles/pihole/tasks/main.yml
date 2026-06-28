@@ -58,7 +58,9 @@
     state: enabled
     permanent: true
     immediate: true
-  when: env_name != 'molecule'
+  when:
+  - env_name != 'molecule'
+  - ansible_os_family == 'RedHat'
 
 - name: Open firewall for HTTP (Pi-hole web UI)
   ansible.posix.firewalld:
@@ -66,7 +68,9 @@
     state: enabled
     permanent: true
     immediate: true
-  when: env_name != 'molecule'
+  when:
+    - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
 
 - name: Open firewall for HTTPS (pi-hole web UI)
   ansible.posix.firewalld:
@@ -74,7 +78,22 @@
     state: enabled
     permanent: true
     immediate: true
-  when: env_name != 'molecule'
+  when:
+    - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
+
+- name: Allow Pi-hole ports (Ubuntu)
+  community.general.ufw:
+    rule: allow
+    port: "{{ item.port }}"
+    proto: "{{ item.proto }}"
+  loop:
+    - { port: "53", proto: "any" }
+    - { port: "80", proto: "tcp" }
+    - { port: "443", proto: "tcp" }
+  when:
+    - env_name != 'molecule'
+    - ansible_os_family == 'Debian'
 
 - name: Check for SELinux AVC denials related to pihole-FTL
   ansible.builtin.command:
@@ -82,12 +101,15 @@
   register: pihole_selinux_avc
   changed_when: false
   failed_when: false
-  when: env_name != 'molecule'
+  when:
+    - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
 
 - name: Report any SELinux denials for pihole-FTL
   ansible.builtin.debug:
     msg: "SELinux AVC denials detected - review before proceeding: {{ pihole_selinux_avc.stdout }}"
   when:
     - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
     - pihole_selinux_avc.rc == 0
     - pihole_selinux_avc.stdout | length > 0

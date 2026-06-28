@@ -9,6 +9,12 @@ platforms:
     pre_build_image: true
     privileged: true
     command: /usr/sbin/init
+
+  - name: ubuntu22-pihole-test
+    image: docker.io/geerlingguy/docker-ubuntu2204-ansible:latest
+    pre_build_image: true
+    privileged: true
+    command: /usr/sbin/init
 provisioner:
   name: ansible
   env:
