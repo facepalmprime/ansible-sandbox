@@ -78,6 +78,34 @@
       changed_when: false
       failed_when: woodpecker_privileged_check.stdout != "1"
 
+    - name: Check gRPC Unix socket path is set in server config
+      ansible.builtin.command:
+        cmd: grep -c '^WOODPECKER_GRPC_ADDR=unix:///run/woodpecker/grpc.sock$' /etc/woodpecker/server.env
+      register: woodpecker_grpc_server_check
+      changed_when: false
+      failed_when: woodpecker_grpc_server_check.stdout != "1"
+
+    - name: Check gRPC Unix socket path is set in agent config
+      ansible.builtin.command:
+        cmd: grep -c '^WOODPECKER_SERVER=unix:///run/woodpecker/grpc.sock$' /etc/woodpecker/agent.env
+      register: woodpecker_grpc_agent_check
+      changed_when: false
+      failed_when: woodpecker_grpc_agent_check.stdout != "1"
+
+    - name: Check gRPC Unix socket exists and is owned by woodpecker
+      ansible.builtin.stat:
+        path: /run/woodpecker/grpc.sock
+      register: woodpecker_grpc_socket
+      when: env_name != 'molecule'
+
+    - name: Assert gRPC Unix socket exists and is owned by woodpecker
+      ansible.builtin.assert:
+        that:
+          - woodpecker_grpc_socket.stat.exists
+          - woodpecker_grpc_socket.stat.pw_name == 'woodpecker'
+        fail_msg: "/run/woodpecker/grpc.sock missing or wrong owner - gRPC socket not created"
+      when: env_name != 'molecule'
+
     - name: Check agent environment file exists
       ansible.builtin.stat:
         path: /etc/woodpecker/agent.env

@@ -4,8 +4,8 @@ dependency:
 driver:
   name: podman
 platforms:
-  - name: rocky8-immich-test
-    image: docker.io/geerlingguy/docker-rockylinux8-ansible:latest
+  - name: rocky9-immich-test
+    image: docker.io/geerlingguy/docker-rockylinux9-ansible:latest
     pre_build_image: true
     privileged: false
     capabilities:

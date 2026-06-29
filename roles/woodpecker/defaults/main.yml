@@ -1,11 +1,11 @@
 ---
-woodpecker_version: "3.14.1"
+woodpecker_version: "3.16.0"
 # Checksums - fetch with:
 #   curl -sL https://github.com/woodpecker-ci/woodpecker/releases/download/v<version>/checksums.txt \
 #      | grep -E "woodpecker-(server|agent)_linux_amd64.tar.gz"
 # Update both hashes whenever woodpecker_version changes.
-woodpecker_server_checksum: "sha256:9c1be66e21930c4453cf5ee13d971555937ca9ef6597329e776dc16ee47f6168"
-woodpecker_agent_checksum: "sha256:bfe5359d3d5f06ac09169c2756c289743b2cd8cadde1085daedc55a2a74ac6cf"
+woodpecker_server_checksum: "sha256:c8e46545a6b68959d5196b8f998403528efb93f12411093967efd914116f2104"
+woodpecker_agent_checksum: "sha256:063f865bb63e694090663cd73159c8c3a463641640d93f01977e2e6c12320e59"
 woodpecker_user: woodpecker
 woodpecker_group: woodpecker
 woodpecker_podman_group: podman

@@ -4,8 +4,8 @@ dependency:
 driver:
   name: podman
 platforms:
-  - name: nginx-rocky
-    image: geerlingguy/docker-rockylinux8-ansible:latest
+  - name: nginx-rocky9
+    image: docker.io/geerlingguy/docker-rockylinux9-ansible:latest
     pre_build_image: true
     privileged: true
     command: /usr/sbin/init

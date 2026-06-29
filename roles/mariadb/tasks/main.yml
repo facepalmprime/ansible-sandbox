@@ -6,6 +6,14 @@
       - python3-PyMySQL
     state: present
 
+- name: Restrict MariaDB to loopback only
+  ansible.builtin.lineinfile:
+    path: /etc/my.cnf.d/mariadb-server.cnf
+    insertafter: '^\[mariadb\]'
+    regexp: '^bind-address'
+    line: 'bind-address = 127.0.0.1'
+  notify: Restart mariadb
+
 - name: Start and enable MariaDB
   ansible.builtin.service:
     name: mariadb

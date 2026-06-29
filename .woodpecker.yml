@@ -21,3 +21,9 @@ steps:
       - echo "$VAULT_PASSWORD" > secret.txt
       - ansible-lint
       - rm -f secret.txt
+
+  - name: gitleaks
+    image: zricethezav/gitleaks:v8.18.4
+    pull: true
+    commands:
+      - gitleaks detect --source=. --redact --exit-code=1

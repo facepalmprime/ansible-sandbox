@@ -115,3 +115,23 @@
     group: root
     mode: '0644'
   tags: motd
+
+# - rpcbind audit
+- name: Check for active NFS exports
+  ansible.builtin.command:
+    cmd: showmount -e localhost
+  register: common_nfs_check
+  changed_when: false
+  failed_when: false
+  tags: rpcbind
+  when: env_name != 'molecule'
+
+- name: Disable rpcbind if no NFS exports exist
+  ansible.builtin.service:
+    name: rpcbind
+    state: stopped
+    enabled: false
+  tags: rpcbind
+  when:
+    - env_name != 'molecule'
+    - common_nfs_check.rc != 0

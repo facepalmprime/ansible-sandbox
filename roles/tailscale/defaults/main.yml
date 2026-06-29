@@ -1,3 +1,7 @@
 ---
 tailscale_authkey: "{{ vault_tailscale_authkey }}"
 tailscale_up_extra_args: ""
+
+tailscale_repo_checksums:
+  "8": "626b8e94c5ae627dbb9b83b208fed7223991bff937c2690d9b3a6b225eaffc9c"
+  "9": "d5398beaa28b9b70e2e653cb8381f527b24c82cf1d9d9f9fb189ae87ba6c8d20"

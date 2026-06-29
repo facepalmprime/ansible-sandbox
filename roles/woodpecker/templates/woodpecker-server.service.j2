@@ -6,6 +6,7 @@ After=network.target gitea.service
 Type=simple
 User={{ woodpecker_user }}
 Group={{ woodpecker_group }}
+RuntimeDirectory=woodpecker
 WorkingDirectory={{ woodpecker_home }}
 EnvironmentFile={{ woodpecker_config_dir }}/server.env
 ExecStart={{ woodpecker_server_binary }} server

@@ -57,6 +57,11 @@
         that: gitea_config_file.stat.exists
         fail_msg: "/etc/gitea/app.ini missing"
 
+    - name: Assert app.ini is mode 0600
+      ansible.builtin.assert:
+        that: gitea_config_file.stat.mode == "0600"
+        fail_msg: "app.ini is not mode 0600 - database credentials may be exposed"
+
     - name: Gather service facts
       ansible.builtin.service_facts:
 

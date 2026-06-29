@@ -31,3 +31,14 @@
       register: pihole_group_check
       changed_when: false
       failed_when: pihole_group_check.rc != 0
+
+    - name: Check pihole user shell
+      ansible.builtin.command:
+        cmd: getent passwd pihole
+      changed_when: false
+      register: pihole_passwd_entry
+
+    - name: Assert pihole user has nologin shell
+      ansible.builtin.assert:
+        that: "'nologin' in pihole_passwd_entry.stdout or '/false' in pihole_passwd_entry.stdout"
+        fail_msg: "pihole user does not have a nologin shell"

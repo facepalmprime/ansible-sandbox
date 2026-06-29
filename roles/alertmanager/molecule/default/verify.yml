@@ -57,3 +57,14 @@
           - ansible_facts.services['alertmanager.service'].state == 'running'
           - ansible_facts.services['alertmanager.service'].status == 'enabled'
         fail_msg: "alertmanager service not active or not enabled"
+
+    - name: Check alertmanager user shell
+      ansible.builtin.command:
+        cmd: getent passwd alertmanager
+      changed_when: false
+      register: alertmanager_passwd_entry
+
+    - name: Assert alertmanager user has nologin shell
+      ansible.builtin.assert:
+        that: "'nologin' in alertmanager_passwd_entry.stdout or '/false' in alertmanager_passwd_entry.stdout"
+        fail_msg: "alertmanager user does not have a nologin shell"
