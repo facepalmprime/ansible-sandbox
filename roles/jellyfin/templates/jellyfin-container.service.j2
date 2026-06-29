@@ -8,6 +8,10 @@ Type=forking
 Restart=on-failure
 RestartSec=30
 TimeoutStartSec=120
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+CapabilityBoundingSet=
 
 ExecStartPre=-/usr/bin/podman stop jellyfin
 ExecStartPre=-/usr/bin/podman rm jellyfin

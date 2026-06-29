@@ -14,12 +14,19 @@
           - immich_etc_dir.stat.isdir
         fail_msg: "/etc/immich was not created by the role"
 
-    - name: Check immich user exists
+    - name: Check immich user and shell
       ansible.builtin.command:
         cmd: getent passwd immich
       register: immich_user
       changed_when: false
-      failed_when: immich_user.rc != 0
+      failed_when: false
+
+    - name: Assert immich user exists with nologin shell
+      ansible.builtin.assert:
+        that:
+          - immich_user.rc == 0
+          - "'/nologin' in immich_user.stdout"
+        fail_msg: "immich user missing or does not use nologin shell"
 
     - name: Check /srv/immich directory exists
       ansible.builtin.stat:
