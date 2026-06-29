@@ -1,0 +1,7 @@
+title = "ansible-sandbox gitleaks config"
+
+[allowlist]
+  description = "Exclude third-party Ansible collection dependencies"
+  paths = [
+    '''collections/ansible_collections/''',
+  ]

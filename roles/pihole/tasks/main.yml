@@ -59,8 +59,8 @@
     permanent: true
     immediate: true
   when:
-  - env_name != 'molecule'
-  - ansible_os_family == 'RedHat'
+    - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
 
 - name: Open firewall for HTTP (Pi-hole web UI)
   ansible.posix.firewalld:

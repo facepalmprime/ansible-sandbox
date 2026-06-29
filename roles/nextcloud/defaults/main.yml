@@ -15,9 +15,10 @@ nextcloud_db_name: nextcloud
 nextcloud_db_user: nextcloud
 nextcloud_db_host: "127.0.0.1"
 nextcloud_db_type: mysql
+nextcloud_mariadb_socket: "{{ '/var/lib/mysql/mysql.sock' if ansible_os_family == 'RedHat' else '/var/run/mysqld/mysqld.sock' }}"
 
 # PHP-FPM
-nextcloud_fpm_socket: /run/php-fpm/nextcloud.sock
+nextcloud_fpm_socket: "{{ '/run/php-fpm/nextcloud.sock' if ansible_os_family == 'RedHat' else '/run/php/nextcloud.sock' }}"
 nextcloud_php_version: "8.3"
 nextcloud_upload_max_size: "16G"
 nextcloud_fpm_max_children: 50
@@ -26,8 +27,8 @@ nextcloud_fpm_min_spare: 5
 nextcloud_fpm_max_spare: 15
 
 # TLS - reuse CA issued cert already deployed by nginx role
-nextcloud_tls_cert: "/etc/nginx/ssl/{{ inventory_hostname }}.crt"
-nextcloud_tls_key: "/etc/nginx/ssl/{{ inventory_hostname }}.key"
+nextcloud_tls_cert: "{{ '/etc/pki/tls/certs' if ansible_os_family == 'RedHat' else '/etc/ssl/certs' }}/{{ inventory_hostname }}.crt"
+nextcloud_tls_key: "{{ '/etc/pki/tls/private' if ansible_os_family == 'RedHat' else '/etc/ssl/private' }}/{{ inventory_hostname }}.key"
 
 # nginx
 nextcloud_nginx_port: 443
@@ -41,3 +42,34 @@ nextcloud_trusted_domains:
   - "{{ inventory_hostname }}"
 nextcloud_default_phone_region: "US"
 nextcloud_overwrite_cli_url: "https://{{ ansible_default_ipv4.address }}"
+
+nextcloud_php_fpm_pkg: "{{ 'php-fpm' if ansible_os_family == 'RedHat' else 'php8.1-fpm' }}"
+nextcloud_php_fpm_pool_dir: "{{ '/etc/php-fpm.d' if ansible_os_family == 'RedHat' else '/etc/php/8.1/fpm/pool.d' }}"
+nextcloud_web_group: "{{ 'nginx' if ansible_os_family == 'RedHat' else 'www-data' }}"
+nextcloud_fpm_socket_group: "{{ 'nginx' if ansible_os_family == 'RedHat' else 'www-data' }}"
+nextcloud_apache_conf_dir: "{{ '/etc/httpd/conf.d' if ansible_os_family == 'RedHat' else '/etc/apache2/sites-available' }}"
+nextcloud_php_packages_redhat:
+  - php
+  - php-fpm
+  - php-mysqlnd
+  - php-xml
+  - php-mbstring
+  - php-gd
+  - php-curl
+  - php-zip
+  - php-intl
+  - php-bcmath
+  - php-gmp
+nextcloud_php_packages_debian:
+  - php8.1
+  - php8.1-fpm
+  - php8.1-mysql
+  - php8.1-xml
+  - php8.1-mbstring
+  - php8.1-gd
+  - php8.1-curl
+  - php8.1-zip
+  - php8.1-intl
+  - php8.1-bcmath
+  - php8.1-gmp
+  - php8.1-apcu

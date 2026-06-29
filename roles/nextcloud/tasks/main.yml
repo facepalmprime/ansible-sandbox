@@ -21,32 +21,42 @@
   ansible.builtin.dnf:
     name: epel-release
     state: present
-  when: env_name != 'molecule'
+  when:
+    - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
 
 - name: Import Remi GPG key
   ansible.builtin.rpm_key:
     key: https://rpms.remirepo.net/RPM-GPG-KEY-remi2018
     state: present
-  when: env_name != 'molecule'
+  when:
+    - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
 
 - name: Install Remi release RPM
   ansible.builtin.dnf:
     name: "https://rpms.remirepo.net/enterprise/remi-release-8.rpm"
     state: present
     disable_gpg_check: false
-  when: env_name != 'molecule'
+  when:
+    - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
 
 - name: Reset PHP module stream
   ansible.builtin.command:
     cmd: dnf module reset php -y
   changed_when: false
-  when: env_name != 'molecule'
+  when:
+    - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
 
 - name: Enable PHP module from Remi for version {{ nextcloud_php_version }}
   ansible.builtin.command:
     cmd: "dnf module enable php:remi-{{ nextcloud_php_version }} -y"
   changed_when: false
-  when: env_name != 'molecule'
+  when:
+    - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
 
 - name: Install PHP 8.3 and required extensions
   ansible.builtin.dnf:
@@ -69,20 +79,39 @@
       - php-process
       - bzip2
     state: present
-  when: env_name != 'molecule'
+  when:
+    - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
+
+- name: Install Apache and PHP (Ubuntu)
+  ansible.builtin.apt:
+    name: "{{ nextcloud_php_packages_debian + ['apache2', 'libapache2-mod-fcgid'] }}"
+    state: present
+    update_cache: true
+  when:
+    - env_name != 'molecule'
+    - ansible_os_family == 'Debian'
+
+- name: Add www-data to ssl-cert group (Ubuntu)
+  ansible.builtin.user:
+    name: www-data
+    groups: ssl-cert
+    append: true
+  when: ansible_os_family == 'Debian'
 
 - name: Create nginx group (needed for socket ownership)
   ansible.builtin.group:
     name: nginx
     system: true
     state: present
+  when: ansible_os_family == 'RedHat'
 
 - name: Create Nextcloud web root
   ansible.builtin.file:
     path: "{{ nextcloud_web_root }}"
     state: directory
     owner: nextcloud
-    group: nginx
+    group: "{{ nextcloud_web_group }}"
     mode: "0750"
 
 - name: Create Nextcloud data directory
@@ -108,6 +137,7 @@
     persistent: true
   when:
     - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
     - ansible_selinux.status == 'enabled'
 
 - name: Allow httpd execmem (PHP OPcache)
@@ -117,6 +147,7 @@
     persistent: true
   when:
     - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
     - ansible_selinux.status == 'enabled'
 
 - name: Allow httpd to send email
@@ -126,6 +157,7 @@
     persistent: true
   when:
     - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
     - ansible_selinux.status == 'enabled'
 
 - name: Add SELinux fcontext for web root
@@ -136,6 +168,7 @@
   failed_when: nextcloud_fcontext_webroot.rc != 0 and 'already defined' not in nextcloud_fcontext_webroot.stderr
   when:
     - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
     - ansible_selinux.status == 'enabled'
 
 - name: Add SELinux fcontext for data directory
@@ -146,6 +179,7 @@
   failed_when: nextcloud_fcontext_data.rc != 0 and 'already defined' not in nextcloud_fcontext_data.stderr
   when:
     - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
     - ansible_selinux.status == 'enabled'
 
 - name: Add SELinux fcontext for session directory
@@ -156,6 +190,7 @@
   failed_when: nextcloud_fcontext_session.rc != 0 and 'already defined' not in nextcloud_fcontext_session.stderr
   when:
     - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
     - ansible_selinux.status == 'enabled'
 
 - name: Apply SELinux fcontext labels
@@ -166,6 +201,7 @@
   failed_when: nextcloud_restorecon_result.rc != 0 and 'No such file' not in nextcloud_restorecon_result.stderr
   when:
     - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
     - ansible_selinux.status == 'enabled'
 
 - name: Download Nextcloud tarball
@@ -182,7 +218,7 @@
     dest: /var/www
     remote_src: true
     owner: nextcloud
-    group: nginx
+    group: "{{ nextcloud_web_group }}"
     creates: "{{ nextcloud_web_root }}/version.php"
   when: env_name != 'molecule'
 
@@ -192,13 +228,29 @@
   changed_when: false
   when:
     - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
     - ansible_selinux.status == 'enabled'
+
+- name: Install MariaDB (Ubuntu)
+  ansible.builtin.apt:
+    name:
+      - mariadb-server
+      - python3-pymysql
+    state: present
+  when: ansible_os_family == 'Debian'
+
+- name: Start and enable MariaDB (Ubuntu)
+  ansible.builtin.service:
+    name: mariadb
+    state: started
+    enabled: true
+  when: ansible_os_family == 'Debian'
 
 - name: Create Nextcloud MariaDB database
   ansible.mysql.mysql_db:
     name: "{{ nextcloud_db_name }}"
     state: present
-    login_unix_socket: /var/lib/mysql/mysql.sock
+    login_unix_socket: "{{ nextcloud_mariadb_socket }}"
     encoding: utf8mb4
     collation: utf8mb4_general_ci
   when: env_name != 'molecule'
@@ -210,24 +262,23 @@
     priv: "{{ nextcloud_db_name }}.*:ALL"
     host: "127.0.0.1"
     state: present
-    login_unix_socket: /var/lib/mysql/mysql.sock
+    login_unix_socket: "{{ nextcloud_mariadb_socket }}"
   no_log: true
   when: env_name != 'molecule'
 
 - name: Create PHP-FPM pool directory (molecule only - on real nodes, package install creates it)
   ansible.builtin.file:
-    path: /etc/php-fpm.d
+    path: "{{ nextcloud_php_fpm_pool_dir }}"
     state: directory
     owner: root
     group: root
     mode: "0755"
   when: env_name == 'molecule'
 
-
 - name: Deploy PHP-FPM pool configuration
   ansible.builtin.template:
     src: nextcloud-fpm.conf.j2
-    dest: /etc/php-fpm.d/nextcloud.conf
+    dest: "{{ nextcloud_php_fpm_pool_dir }}/nextcloud.conf"
     owner: root
     group: root
     mode: "0644"
@@ -235,7 +286,7 @@
 
 - name: Enable and start PHP-FPM
   ansible.builtin.systemd:
-    name: php-fpm
+    name: "{{ nextcloud_php_fpm_pkg }}"
     state: started
     enabled: true
   when: env_name != 'molecule'
@@ -247,7 +298,9 @@
     owner: root
     group: root
     mode: "0755"
-  when: env_name == 'molecule'
+  when:
+    - env_name == 'molecule'
+    - ansible_os_family == 'RedHat'
 
 - name: Deploy nginx Nextcloud vhosts
   ansible.builtin.template:
@@ -257,6 +310,56 @@
     group: root
     mode: "0644"
   notify: Reload nginx
+  when: ansible_os_family == 'RedHat'
+
+- name: Create Apache sites-available directory (molecule only)
+  ansible.builtin.file:
+    path: /etc/apache2/sites-available
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when:
+    - env_name == 'molecule'
+    - ansible_os_family == 'Debian'
+
+- name: Deploy Apache Nextcloud vhost (Ubuntu)
+  ansible.builtin.template:
+    src: apache-nextcloud.conf.j2
+    dest: "{{ nextcloud_apache_conf_dir }}/nextcloud.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart apache
+  when: ansible_os_family == 'Debian'
+
+- name: Enable required Apache modules (Ubuntu)
+  ansible.builtin.command:
+    cmd: "a2enmod {{ item }}"
+  loop:
+    - proxy
+    - proxy_fcgi
+    - rewrite
+    - headers
+    - env
+    - dir
+    - mime
+    - setenvif
+    - ssl
+  changed_when: true
+  notify: Restart apache
+  when:
+    - env_name != 'molecule'
+    - ansible_os_family == 'Debian'
+
+- name: Enable Nextcloud site (Ubuntu)
+  ansible.builtin.command:
+    cmd: a2ensite nextcloud.conf
+  changed_when: true
+  notify: Restart apache
+  when:
+    - env_name != 'molecule'
+    - ansible_os_family == 'Debian'
 
 - name: Add SELinux port label for 443
   ansible.builtin.command:
@@ -266,6 +369,7 @@
   failed_when: nextcloud_semanage_443.rc != 0 and 'already defined' not in nextcloud_semanage_443.stderr
   when:
     - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
     - ansible_selinux.status == 'enabled'
 
 - name: Open HTTPS in firewalld
@@ -274,7 +378,21 @@
     state: enabled
     permanent: true
     immediate: true
-  when: env_name != 'molecule'
+  when:
+    - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
+
+- name: Allow Nextcloud HTTPS (Ubuntu)
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop:
+    - "80"
+    - "443"
+  when:
+    - env_name != 'molecule'
+    - ansible_os_family == 'Debian'
 
 - name: Check if Nextcloud is already installed
   ansible.builtin.stat:
@@ -315,6 +433,7 @@
   changed_when: false
   failed_when: false
   when: env_name != 'molecule'
+
 
 - name: Set trusted domains
   ansible.builtin.command:
@@ -385,6 +504,7 @@
   changed_when: false
   when:
     - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
     - ansible_selinux.status == 'enabled'
 
 - name: Count AVC denials in audit.log
@@ -393,7 +513,9 @@
   register: nextcloud_avc_count
   changed_when: false
   failed_when: false
-  when: env_name != 'molecule'
+  when:
+    - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
 
 - name: Report AVC count
   ansible.builtin.debug:
@@ -403,4 +525,47 @@
       Do NOT disable SELinux - fix the seboolean or fcontext.
   when:
     - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
     - nextcloud_avc_count.stdout is defined
+
+- name: Install exiftool (Rocky)
+  ansible.builtin.dnf:
+    name: perl-Image-ExifTool
+    state: present
+  when: ansible_os_family == 'RedHat'
+
+- name: Install exiftool (Ubuntu)
+  ansible.builtin.apt:
+    name: libimage-exiftool-perl
+    state: present
+  when: ansible_os_family == 'Debian'
+
+- name: Set Nextcloud app store timeout (large apps.json download)
+  ansible.builtin.command:
+    cmd: php occ config:system:set appstoreTimeout --value=300 --type=integer
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: nextcloud
+  changed_when: false
+  when: env_name != 'molecule'
+
+- name: Install Nextcloud Memories app
+  ansible.builtin.command:
+    cmd: php occ app:install memories
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: nextcloud
+  register: nextcloud_memories_install
+  changed_when: "'memories' in nextcloud_memories_install.stdout"
+  failed_when: >
+    nextcloud_memories_install.rc != 0 and 'already installed' not in nextcloud_memories_install.stdout
+  when: env_name != 'molecule'
+
+- name: Run Nextcloud Memories initial index
+  ansible.builtin.command:
+    cmd: php occ memories:index
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: nextcloud
+  changed_when: true
+  when: env_name != 'molecule'

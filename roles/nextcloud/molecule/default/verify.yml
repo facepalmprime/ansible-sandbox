@@ -1,7 +1,7 @@
 ---
 - name: Verify nextcloud role (container-safe checks only)
   hosts: all
-  gather_facts: false
+  gather_facts: true
   tasks:
     - name: Check nextcloud group exists
       ansible.builtin.command:
@@ -46,25 +46,41 @@
           - nextcloud_nc_datadir.stat.isdir
         fail_msg: "/srv/nextcloud not created - check ansible.builtin.file task"
 
-    - name: Check PHP-FPM pool config deployed
+    - name: Check PHP-FPM pool config deployed (RedHat)
       ansible.builtin.stat:
         path: /etc/php-fpm.d/nextcloud.conf
-      register: nextcloud_nc_fpm
+      register: nextcloud_nc_fpm_rh
+      when: ansible_os_family == 'RedHat'
 
-    - name: Assert PHP-FPM pool config present
+    - name: Check PHP-FPM pool config deployed (Debian)
+      ansible.builtin.stat:
+        path: /etc/php/8.1/fpm/pool.d/nextcloud.conf
+      register: nextcloud_nc_fpm_deb
+      when: ansible_os_family == 'Debian'
+
+    - name: Assert PHP-FPM pool config present (RedHat)
       ansible.builtin.assert:
-        that: nextcloud_nc_fpm.stat.exists
+        that: nextcloud_nc_fpm_rh.stat.exists
         fail_msg: "/etc/php-fpm.d/nextcloud.conf not deployed"
+      when: ansible_os_family == 'RedHat'
+
+    - name: Assert PHP-FPM pool config present (Debian)
+      ansible.builtin.assert:
+        that: nextcloud_nc_fpm_deb.stat.exists
+        fail_msg: "/etc/php/8.1/fpm/pool.d/nextcloud.conf not deployed"
+      when: ansible_os_family == 'Debian'
 
     - name: Check nginx vhost config deployed
       ansible.builtin.stat:
         path: /etc/nginx/conf.d/nextcloud.conf
       register: nextcloud_nc_nginx
+      when: ansible_os_family == 'RedHat'
 
     - name: Assert nginx vhost present
       ansible.builtin.assert:
         that: nextcloud_nc_nginx.stat.exists
         fail_msg: "/etc/nginx/conf.d/nextcloud.conf not deployed"
+      when: ansible_os_family == 'RedHat'
 
     - name: Confirm no unrendered Jinja2 vars in nginx config
       ansible.builtin.command:
@@ -72,4 +88,6 @@
       register: nextcloud_secret_leak
       changed_when: false
       failed_when: nextcloud_secret_leak.rc == 0
-      when: nextcloud_nc_nginx.stat.exists
+      when:
+        - ansible_os_family == 'RedHat'
+        - nextcloud_nc_nginx.stat.exists

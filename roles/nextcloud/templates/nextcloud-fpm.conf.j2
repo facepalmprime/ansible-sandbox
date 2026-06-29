@@ -5,8 +5,8 @@ group = nextcloud
 
 ; Unix socket - nginx communicates via socket (faster than TCP, no port exposure)
 listen = {{ nextcloud_fpm_socket }}
-listen.owner = nginx
-listen.group = nginx
+listen.owner = {{ nextcloud_fpm_socket_group }}
+listen.group = {{ nextcloud_fpm_socket_group }}
 listen.mode = 0660
 
 ; Process management - dynamic, tuned for a dedicated node

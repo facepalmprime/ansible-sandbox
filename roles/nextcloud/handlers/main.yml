@@ -1,7 +1,7 @@
 ---
 - name: Restart php-fpm
   ansible.builtin.systemd:
-    name: php-fpm
+    name: "{{ nextcloud_php_fpm_pkg }}"
     state: restarted
   when: env_name != 'molecule'
 
@@ -9,4 +9,12 @@
   ansible.builtin.systemd:
     name: nginx
     state: reloaded
+  when:
+    - env_name != 'molecule'
+    - ansible_os_family == 'RedHat'
+
+- name: Restart apache
+  ansible.builtin.systemd:
+    name: apache2
+    state: restarted
   when: env_name != 'molecule'

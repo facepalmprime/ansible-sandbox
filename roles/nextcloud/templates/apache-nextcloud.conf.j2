@@ -1,0 +1,40 @@
+# Nextcloud Apache vhost - managed by Ansible, do not edit manually
+
+<VirtualHost *:80>
+    ServerName {{ ansible_default_ipv4.address }}
+    Redirect permanent / https://{{ ansible_default_ipv4.address }}/
+</VirtualHost>
+
+<VirtualHost *:443>
+    ServerName {{ ansible_default_ipv4.address }}
+    DocumentRoot {{ nextcloud_web_root }}
+    Protocols h2 http/1.1
+
+    SSLEngine on
+    SSLCertificateFile {{ nextcloud_tls_cert }}
+    SSLCertificateKeyFile {{ nextcloud_tls_key }}
+    SSLProtocol ALL -SSLv2 -SSLv3 -TLSv1 -TLSv1.1
+
+    Header always set Strict-Transport-Security "max-age=6307200;"
+
+    # Required for WebDAV/CalDAV/CardDAV auth header passthrough
+    ProxyFCGIBackendType FPM
+
+    <FilesMatch \.php$>
+        SetHandler "proxy:unix:{{ nextcloud_fpm_socket }}|fcgi://localhost"
+    </FilesMatch>
+
+    <FilesMatch remote\.php>
+        SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+    </FilesMatch>
+
+    <Directory {{ nextcloud_web_root }}>
+        Require all granted
+        AllowOverride ALL
+        options FollowSymLinks MultiViews
+
+        <IfModule mod_dav.c>
+            Dav off
+        </IfModule>
+    </Directory>
+</VirtualHost>
