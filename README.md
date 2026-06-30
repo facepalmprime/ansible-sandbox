@@ -25,6 +25,10 @@ from first boot. If something isn't automated here, it doesn't exist.
 Turns out that's useful — playbooks that only run against stable nodes don't teach
 you anything about partial failures.
 
+**node1 is currently offline** — the physical drive failed mid-project (see the
+incident entry in the debugging section). A disaster recovery playbook is written
+and ready for when the hardware is back.
+
 ## What's Built
 
 ### Building the Substrate
@@ -140,6 +144,81 @@ deployment, a dedicated security hardening pass closed 10 findings: `no-new-priv
 on all containers, `cap_drop: ALL` with only empirically-proven caps added back, and a
 dedicated SELinux type (`immich_ml_cache_t`) scoping the ML container's write access to
 its own cache directory rather than all container storage on the host.
+
+### Observability Stack and Hybrid Cloud
+
+With the homelab services running, the next question was whether they were actually
+healthy — and how I'd know if they weren't. The answer is a PLG stack (Prometheus,
+Loki, Grafana) running on a dedicated AWS EC2 instance, connected to the homelab
+via Tailscale mesh VPN.
+
+**Why AWS for monitoring?** The monitoring server needs to be always-on and reachable
+even when the homelab is not. Running it inside the same network it's monitoring
+defeats the point — if node1 goes down and Grafana is on node1, you find out about
+the outage by noticing Grafana is down, not by reading an alert.
+
+**Tailscale** — the homelab is behind NAT. There is no direct route from AWS to the
+LAN. Tailscale builds a WireGuard mesh where every node gets a stable
+`100.x.x.x` address and a predictable MagicDNS hostname regardless of what network
+it's behind. Prometheus scrape targets use those hostnames, not raw LAN IPs. No open
+inbound ports, no port forwarding, no firewall exceptions.
+
+**node_exporter** exports system metrics (CPU, RAM, disk, network) on every managed
+node. Secured with TLS via the internal CA and bcrypt basic auth (cost factor 12).
+Prometheus scrapes over the Tailscale overlay. Firewall rules on each node restrict
+port 9100 to the `100.64.0.0/10` Tailscale CIDR only.
+
+**Promtail** ships systemd journal logs from every node to Loki using mTLS. Each
+agent presents a client certificate signed by the internal CA; Loki requires and
+verifies it before accepting any push.
+
+**Loki** runs on aws-monitoring and receives all log streams. Binary deployment with
+a systemd unit, same pattern as every other service. No Elasticsearch, no full-text
+index — Loki indexes only labels (hostname, service name, level), which is why it's
+appropriate for a four-node homelab rather than a dedicated machine.
+
+**Prometheus** scrapes node_exporter and Promtail metadata. Alerting rules with
+range-vector tuning to avoid noise (2-hour ranges for disk growth trends, 5-minute
+for CPU). Alert pipeline: Prometheus rule fires → Alertmanager routes by severity →
+Slack for criticals, email for warnings. inhibit_rules suppress the wave of secondary
+alerts (high CPU, low disk) when the root cause is a node-down critical.
+
+**Grafana** provisions datasources and dashboards as code — Jinja2 templates in the
+role, deployed on every run, Grafana reads them at startup. No manual UI clicks, no
+config drift. Dashboard JSON committed to the repo.
+
+**Cross-distro extension** — with node1 offline during Phase 7, every service role
+(Pi-hole, Jellyfin, Nextcloud) had to run on node2 (Ubuntu). The abstraction layer
+is an `include_vars` call at the top of each tasks file that loads either
+`vars/redhat.yml` or `vars/debian.yml` based on `ansible_os_family`. Task files have
+zero when conditions for distro differences; every distro variation is data, not
+logic. Adding a third distro means adding one vars file.
+
+**Node1 disaster recovery playbook** — written while the drive was on order. Rebuilds
+node1 from a fresh OS: bootstrap, bridge networking, KVM, VM restore from qcow2
+backups on node2, prod service redeploy. The backup is on node2; the repo is the
+rest of the recovery procedure.
+
+---
+
+### Security Hardening Sprint
+
+After the Phase 7 roles were deployed, I ran a systematic audit of the entire
+codebase against CIS RHEL 9 v2.0.0, NIST SP 800-53, OWASP TLS, and the RHEL 9
+Security Hardening Guide. 38 findings. All Criticals and Highs resolved before the
+phase closed. The Mediums and Lows are documented at the top of the next phase's
+task list.
+
+The two Criticals:
+
+- **Pi-hole had no web UI password.** `pwhash = ""` in pihole.toml means the admin
+  panel accepts any login. Pi-hole controls DNS for the entire LAN — a blank password
+  is not a hardening gap, it's an open door. Fix: generate the double-SHA256 hash
+  offline, store in vault, reference in the template.
+- **Jellyfin was running as root.** No `User=` directive in the systemd unit means
+  Podman runs as root. A container breakout is a full host compromise. Fix: rootless
+  Podman with loginctl enable-linger, subuid/subgid mappings, and `--userns=keep-id`.
+  This required rewriting the unit template almost entirely — see the debugging section.
 
 ## Problems I Hit and How I Diagnosed Them
 
@@ -475,7 +554,7 @@ extend the existing service roles to support Ubuntu — the `common` role alread
 both OS families, and the service roles are the natural next step. That gets services
 running on node5 without waiting for new hardware. The other priority is writing a
 recovery playbook: bootstrap a fresh OS, restore `/srv` from the node2 backup,
-re-provision the VMs — so the day the replacement drive arrives, the lab comes back up
+re-provision the VMs — so when the hardware is back, the lab comes back up
 without any manual steps.
 
 ## Security Hardening
@@ -483,20 +562,45 @@ without any manual steps.
 Before deploying any public-facing services I ran through CIS benchmarks section by
 section and fixed what came up. The changes:
 
-- **Local CA + TLS throughout** — self-signed CA, certs distributed to all nodes,
-  Gitea and Woodpecker both behind HTTPS. Login tokens aren't going over plain HTTP anymore.
-- **Binary checksum verification** — every `get_url` task now has a pinned SHA256.
+- **Local CA + per-host TLS** — internal CA on the control node, one signed cert per
+  `inventory_hostname`. Every service (Gitea, Woodpecker, Prometheus, Loki, Grafana,
+  node_exporter, Promtail, Pi-hole, Jellyfin, Nextcloud) serves TLS. No self-signed
+  per-service certs — all certs chain to the same CA so clients only need to trust one
+  root. Login tokens and metrics don't go over plain HTTP.
+- **mTLS for log delivery** — Loki requires `RequireAndVerifyClientCert`. Promtail
+  presents a client cert signed by the CA. Unauthorized clients on the Tailscale
+  network can't push logs regardless of what address they have.
+- **bcrypt basic auth** — node_exporter and Prometheus use bcrypt-hashed basic auth
+  (cost factor 12, OWASP 2026 minimum). Plaintext password in vault; hash in the
+  web config file on the node. Hash is not the password.
+- **EECDH-only cipher suites** — nginx, Prometheus, and Alertmanager are all configured
+  with `EECDH+AESGCM:EDH+AESGCM:!aNULL:!eNULL`. ECDHE and DHE give you forward
+  secrecy — a session key is generated fresh for every connection and discarded
+  immediately. `HIGH:!aNULL:!MD5` sounds secure but allows static RSA key exchange,
+  which means a recorded session can be decrypted retroactively if the private key is
+  ever exposed.
+- **HSTS** — all reverse proxies set `Strict-Transport-Security: max-age=63072000` (two
+  years). Browsers won't attempt plain HTTP to these hostnames.
+- **Binary checksum verification** — every `get_url` task has a pinned SHA256.
   If the download doesn't match, Ansible refuses to install it.
-- **Systemd sandboxing** — `NoNewPrivileges`, `PrivateTmp`, `ProtectSystem`, scoped
-  `ReadWritePaths` on every service unit. A compromised Gitea or Woodpecker process
-  can't read `/home` or write outside its own directories.
-- **MariaDB hardened** — anonymous users and test database removed post-install.
-- **gitleaks in pre-commit hook** — staged files scanned for secrets before every
-  commit. One accidental vault password paste gets caught before it reaches git history.
+- **Systemd unit hardening** — every custom service unit carries the full block:
+  `NoNewPrivileges`, `ProtectSystem=strict`, `PrivateTmp`, `CapabilityBoundingSet=`,
+  `SystemCallFilter=@system-service`, `SystemCallArchitectures=native`, `RemoveIPC`,
+  `RestrictNamespaces`, `RestrictRealtime`, `LockPersonality`, `MemoryDenyWriteExecute`.
+  A compromised service process can't write to the filesystem outside its data
+  directory, can't make privileged syscalls, and can't exec a setuid binary.
+- **MariaDB hardened** — anonymous users and test database removed post-install. Bind
+  address restricted to `127.0.0.1` — the process can't accept remote connections.
+- **Woodpecker gRPC on Unix socket** — moved from `127.0.0.1:9000` (TCP) to
+  `unix:///run/woodpecker/grpc.sock`. Eliminates the TCP listener entirely.
+- **gitleaks in CI pipeline and pre-commit** — staged files scanned before every commit.
+  The `.woodpecker.yml` pipeline also runs `gitleaks detect` on every push. Two real
+  findings in the git history (a rotated Phase 3 Gitea JWT secret) — documented in the
+  risk register.
 - **Pinned collection versions** — `requirements.yml` has exact version pins. Fresh
-  installs get exactly what was tested, not whatever is latest.
+  installs get exactly what was tested.
 - **Separate SSH keys** — the ansible service account uses a dedicated ed25519 key.
-  Rotating automation credentials doesn't affect interactive access and vice versa.
+  Rotating automation credentials doesn't affect interactive access.
 
 For the containerized services, a second layer of hardening on top of the infrastructure baseline:
 
@@ -530,6 +634,79 @@ physical access to the control node — 0600 and gitignore is the call. On a sha
 cloud-hosted control node, pull the password from HashiCorp Vault or SSM at runtime
 instead.
 
+---
+
+**Promtail logs were silently not reaching Loki for weeks**
+
+Promtail showed `active` on every node. Loki showed `active` on aws-monitoring. No
+errors anywhere obvious. Logs weren't arriving in Loki.
+
+Root cause: the internal CA issued each node a cert with only `DNS:<inventory_hostname>`
+in the Subject Alternative Name list. Promtail connects to Loki using the Tailscale
+FQDN (`aws-monitoring.<tailnet>.ts.net`). TLS hostname verification failed because
+the FQDN wasn't in the SAN — so Promtail was correctly rejecting the connection. Loki
+logged this as `remote error: tls: bad certificate`. `remote` in a TLS error means
+the alert came from the peer — so Loki was reporting that *Promtail* raised the alarm,
+about *Loki's* certificate. That's backwards from how it reads.
+
+The same root cause explained two other failures in the same debugging session:
+Prometheus self-scrape (localhost not in SAN) and Prometheus → node_exporter (Tailscale
+FQDN not in SAN). Three failures that looked unrelated traced to one shared cert
+issuance policy in the `ca` role. Fixed in the CA, every consuming role inherited the
+fix automatically.
+
+Diagnosed by: manually reproducing Promtail's TLS handshake with `curl --cert/--key`
+against Loki. Got `subjectAltName does not match` — confirmed in one command what
+`systemctl status` had been hiding for weeks.
+
+---
+
+**Jellyfin rootless Podman: six incompatibilities in one unit file**
+
+The plan was to add `User=jellyfin` and configure loginctl linger. The actual fix was
+a complete unit rewrite after working through six separate incompatibilities.
+
+`ProtectSystem=strict` and `PrivateTmp=yes` both create mount namespaces with
+`MS_NOSUID` propagation. Rootless Podman calls `newuidmap` and `newgidmap` (setuid
+binaries for UID remapping). `MS_NOSUID` blocks setuid execution in the namespace.
+Both options had to come out.
+
+`CapabilityBoundingSet=` clears all capabilities including `CAP_SYS_ADMIN`, which
+rootless Podman needs to create user namespaces. Had to come out.
+
+`--cpus` is incompatible with Podman 3.4 running rootless — the CPU cgroup controller
+isn't delegated to unprivileged users on this kernel. Had to come out.
+
+`--user 970:970` was wrong for rootless. In rootless mode, UIDs inside the container
+map to the user's subordinate UID range on the host. The config files owned by UID 970
+on the host appeared inside the container as owned by UID 0. Jellyfin couldn't read
+its own config. Fix: `--userns=keep-id` (maps the running user's host UID directly
+into the container) plus `HOME=` environment variable (without `--user`, the container
+defaults HOME to `/`).
+
+`Type=simple` caused PID tracking issues with the detached container on some restarts.
+Changed to `Type=oneshot` with `podman run -d`.
+
+After all five option changes: `podman system migrate` to update Podman's internal
+storage for the new UID mappings. Then it started.
+
+---
+
+**Grafana Loki datasource was storing the TLS private key in three places at once**
+
+The Grafana datasource template used `lookup('file', '~/.ansible-sandbox-ca/aws-monitoring.key')`
+to inline the raw PEM key directly into the YAML. That key ended up: in the
+provisioning YAML file on disk, in Ansible's `--diff` output every time the template
+changed, and in Grafana's SQLite database after provisioning.
+
+Anything that stores key material in plaintext outside a dedicated secrets store is a
+finding. Fix: deploy cert and key as separate files under `/etc/grafana/pki/` with
+mode 0600 and ownership `grafana:grafana`, then reference `tlsClientCertFile` and
+`tlsClientKeyFile` paths in the datasource config. The key stays on the filesystem;
+it stops appearing in logs, diffs, and databases.
+
+---
+
 ## Engineering Practices
 
 | Practice | Why |
@@ -549,34 +726,49 @@ instead.
 ```
 ansible-sandbox/
 ├── ci/
-│   └── Containerfile.ansible-lint  (pinned ansible-lint image for CI)
+│   └── Containerfile.ansible-lint  (pinned ansible-lint + ansible-core image for CI)
 ├── environments/
-│   ├── dev/        # node3, node4 (Rocky 8.9 VMs — disposable)
+│   ├── dev/        # node3, node4 (Rocky 8.9 VMs on node1 — disposable)
 │   ├── test/       # node2, node5 (Ubuntu 22.04 — intentionally unstable)
-│   └── prod/       # node1 (Rocky 8.9 physical — real services)
+│   ├── prod/       # node1 (homelab physical), node2 (standing in while node1 is down)
+│   └── aws/        # aws-monitoring (EC2 t4g.small — monitoring stack)
+├── group_vars/
+│   ├── all/        # cross-cutting vars and vault
+│   ├── monitoring/ # scoped vault for PLG stack credentials
+│   └── prod/       # scoped vault for homelab service credentials
 ├── roles/
-│   ├── bootstrap/   # service account creation (one-shot, Molecule verified)
-│   ├── common/      # hardened baseline — all nodes, both OS families
-│   ├── mariadb/     # MariaDB install + database/user provisioning
-│   ├── gitea/       # Gitea binary deploy, systemd, SELinux, TLS, vault secrets
-│   ├── woodpecker/  # Woodpecker CI server + agent — binary deploy, podman backend
-│   ├── pihole/      # Pi-hole v6 DNS sinkhole — capture-and-template pattern
-│   ├── jellyfin/    # Jellyfin media server — SELinux TE policy, PKCS12 TLS
-│   ├── nextcloud/   # Nextcloud — PHP-FPM, nginx, MariaDB, occ idempotency
-│   └── immich/      # Immich photo stack — Podman Compose, CIL policy, hardened
+│   ├── bootstrap/      # service account creation (one-shot, Molecule verified)
+│   ├── ca/             # internal CA — generates per-host certs on control node
+│   ├── common/         # hardened baseline — all nodes, both OS families
+│   ├── tailscale/      # WireGuard mesh VPN — cross-distro, authkey in vault
+│   ├── node_exporter/  # system metrics — TLS, bcrypt basic auth, Tailscale-only firewall
+│   ├── promtail/       # log shipping — mTLS client certs, cross-distro journal access
+│   ├── loki/           # log aggregation — mTLS RequireAndVerifyClientCert
+│   ├── prometheus/     # metrics collection — EECDH ciphers, alerting rules
+│   ├── alertmanager/   # alert routing — Slack critical, email warning, inhibition rules
+│   ├── grafana/        # dashboards as code — provisioned datasources and dashboards
+│   ├── mariadb/        # MariaDB — loopback bind, anonymous users removed
+│   ├── gitea/          # Gitea binary deploy, systemd, SELinux, TLS, vault secrets
+│   ├── woodpecker/     # Woodpecker CI — Unix socket gRPC, plugin allowlist, gitleaks step
+│   ├── pihole/         # Pi-hole v6 — capture-and-template, pwhash in vault
+│   ├── jellyfin/       # Jellyfin — rootless Podman, userns=keep-id, CA-signed PKCS12
+│   ├── nextcloud/      # Nextcloud — PHP-FPM, cross-distro (nginx/Apache), occ idempotency
+│   └── immich/         # Immich photo stack — Podman Compose, CIL policy, hardened
 ├── playbooks/
 │   ├── bootstrap.yml
 │   ├── common.yml
 │   ├── assert_common.yml
+│   ├── deploy_monitoring.yml    # full PLG stack in dependency order
 │   ├── deploy_gitea.yml
 │   ├── deploy_woodpecker.yml
 │   ├── deploy_pihole.yml
 │   ├── deploy_jellyfin.yml
 │   ├── deploy_nextcloud.yml
-│   └── deploy_immich.yml
-├── .woodpecker.yml                  (pipeline definition — ansible-lint on push)
+│   ├── deploy_immich.yml
+│   └── recover_node1.yml        # DR playbook — rebuild node1 from scratch
+├── .woodpecker.yml              (pipeline — ansible-lint + gitleaks on push)
 └── collections/
-    └── requirements.yml
+    └── requirements.yml         (pinned collection versions)
 ```
 
 ## Running It
@@ -598,41 +790,41 @@ cd roles/common && molecule test
 
 ## What's Next
 
-The lab is still running. node1 is down with a drive failure — see the incident entry
-above for the full write-up.
+Node1 is offline with a drive failure. `recover_node1.yml` runs when the hardware is
+back — bootstrap a fresh Rocky 9 install, bridge networking, KVM, restore node3 and node4
+from qcow2 backups on node2, redeploy all services. Every service that ran on node1
+is already automated; the recovery playbook just chains them together in the right
+order.
 
-**While node1 is down:**
+**Security backlog first.** The Phase 7 audit produced 23 Medium and Low findings that
+weren't resolved before the phase closed. These go at the top of the next phase before
+any new roles are written:
 
-- **Cross-distro service deployment** — the existing service roles (Pi-hole, Jellyfin,
-  Nextcloud, Immich) are Rocky-only right now. Extending them to support Ubuntu means
-  the same playbook runs on node5 without changes — package names, firewall, and config
-  paths vary by OS family, the role logic doesn't. The `common` role already does this;
-  the service roles are the obvious next step. Gets services running on node5 immediately
-  and makes every role more useful to anyone cloning the repo.
-- **Node1 recovery playbook** — I have the full backup on node2 and every service
-  already automated. Writing `recover_node1.yml` that bootstraps a fresh OS, restores
-  `/srv` from the backup, and re-provisions the VMs is Ansible doing exactly what Ansible
-  is for. The goal is to run it the day the replacement drive arrives and have the lab
-  back up without touching anything manually.
-- **Local housekeeping** — ansible-lint upgrade from 6.22.2 to 26.4.0 (long deferred),
-  and fixing the Immich stack so it survives a reboot. Neither needs a node.
+- Service accounts with unnecessary home directories (jellyfin, immich, pihole)
+- node_exporter and Promtail binding to 0.0.0.0 instead of the Tailscale interface
+- SSH hardening gaps (MaxAuthTries, ClientAlive, AllowUsers, X11Forwarding disabled)
+- CA leaf certificate validity (825 days → 365 days)
+- Remaining TLS minimum version pins and SELinux CIL scope tightening
 
-**Once node1 is restored:**
+**Role scaffolding generator.** Every new role needs the same skeleton: defaults, tasks,
+handlers, service unit template, molecule suite with prepare.yml for CA cert mocking,
+security gate defaults baked in. A playbook that generates this from `role_name`,
+`port`, `binary_name`, `tls: true/false` eliminates the repetitive setup and enforces
+the security gate by default.
 
-- **Run the recovery playbook** — prove it actually works against real hardware, not
-  just in theory.
-- **Immich prod deploy** — the role has passed molecule and all local gate checks.
-  Final live verification on node3, then it goes to prod.
-- **Chaos engineering** — node2's wifi has been dropping since day one and I've been
-  treating it as a feature. Time to make that intentional: structured failure injection,
-  not just waiting for the wifi to die at a convenient moment.
+**Additional exporters.** The monitoring stack is wired; what it's missing is coverage:
+- `smartctl_exporter` — SMART disk metrics. node1's drive failed with no advance warning.
+  This closes that exact gap.
+- `blackbox_exporter` — probes Nextcloud, Jellyfin, Gitea over HTTPS from the outside.
+  Current monitoring proves the process is running; this proves the service is reachable.
+- `pihole_exporter` — Pi-hole already exposes a stats API. Wiring it to Prometheus and
+  Grafana is a small addition on top of infrastructure that already exists.
 
 **Further out:**
 
-- **Terraform + cloud** — once the on-prem foundation is complete this is the natural
-  next step. Terraform provisions a cloud VM, Ansible configures it with the same roles
-  that run here, dynamic inventory replaces the static hosts file. The patterns don't
-  change; the target does.
+- **Terraform + cloud** — Terraform provisions the cloud VM, Ansible configures it with
+  the same roles that run here, dynamic inventory replaces the static hosts file. The
+  patterns don't change; the target does.
 - **Kubernetes** — k3s on node1's VMs, Ansible-managed, find out where the automation
   model starts to show its limits.
 - **Terraform on-prem** — provision local VMs through Terraform, configure through
@@ -644,7 +836,9 @@ above for the full write-up.
 
 ## Tech Stack
 
-Ansible · Rocky Linux 8.9 · Ubuntu 22.04 · KVM/libvirt · Molecule · Podman · Podman Compose ·
-ansible-vault · ansible-lint · MariaDB · Gitea · Woodpecker CI · Pi-hole · Jellyfin · Nextcloud · Immich ·
-nginx · PHP-FPM · firewalld · ufw · SELinux (CIL + TE policy authoring) · chrony · Python 3
+Ansible · Rocky Linux 8.9/9 · Ubuntu 22.04 · KVM/libvirt · Molecule · Podman · Podman Compose ·
+ansible-vault · ansible-lint · gitleaks · MariaDB · Gitea · Woodpecker CI · Tailscale · WireGuard ·
+Prometheus · Loki · Grafana · Alertmanager · Promtail · node_exporter · AWS EC2 · IAM Identity Center ·
+Pi-hole · Jellyfin · Nextcloud · Immich · nginx · Apache · PHP-FPM · firewalld · ufw ·
+SELinux (CIL + TE policy authoring) · chrony · Python 3
 
