@@ -18,6 +18,13 @@ PrivateTmp=true
 PrivateDevices=true
 CapabilityBoundingSet=
 ReadWritePaths={{ loki_data_dir }}
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+RemoveIPC=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
 
 [Install]
 WantedBy=multi-user.target

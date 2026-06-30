@@ -112,7 +112,7 @@
     path: /etc/pki/tls/private/immich.key
     size: 4096
     owner: root
-    group: root
+    group: nginx
     mode: "0640"
   when: env_name != 'molecule'
 

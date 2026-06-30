@@ -5,7 +5,9 @@ server {
     ssl_certificate      {{ nginx_cert_dir }}/{{ inventory_hostname }}.crt;
     ssl_certificate_key  {{ nginx_cert_dir }}/{{ inventory_hostname }}.key;
     ssl_protocols        TLSv1.2 TLSv1.3;
-    ssl_ciphers          HIGH:!aNULL:!MD5;
+    ssl_ciphers          EECDH+AESGCM:EDH+AESGCM:!aNULL:!eNULL:!LOW:!3DES:!RC4:!MD5:!EXP:!PSK:!SRP:!DSS;
+    ssl_prefer_server_ciphers on;
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;
 
     location / {
         proxy_pass         {{ nginx_woodpecker_backend }};

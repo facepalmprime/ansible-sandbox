@@ -77,6 +77,32 @@
     mode: "0640"
   notify: Restart grafana
 
+- name: Create Grafana Loki PKI directory
+  ansible.builtin.file:
+    path: /etc/grafana/pki
+    state: directory
+    owner: root
+    group: "{{ grafana_group }}"
+    mode: "0750"
+
+- name: Deploy Loki client certificate to Grafana PKI dir
+  ansible.builtin.copy:
+    src: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca/{{ inventory_hostname }}.crt"
+    dest: /etc/grafana/pki/loki-client.crt
+    owner: root
+    group: "{{ grafana_group }}"
+    mode: "0640"
+  notify: Restart grafana
+
+- name: Deploy Loki client key to Grafana PKI dir
+  ansible.builtin.copy:
+    src: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca/{{ inventory_hostname }}.key"
+    dest: /etc/grafana/pki/loki-client.key
+    owner: root
+    group: "{{ grafana_group }}"
+    mode: "0640"
+  notify: Restart grafana
+
 - name: Deploy Loki datasource
   ansible.builtin.template:
     src: provisioning/datasources/loki.yml.j2

@@ -32,7 +32,7 @@
     owner: pihole
     group: pihole
     mode: "0640"
-  when: not pihole_service.stat.exists
+  notify: Restart pihole-FTL
 
 - name: Download Pi-hole installer
   ansible.builtin.get_url:

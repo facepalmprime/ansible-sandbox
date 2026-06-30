@@ -14,8 +14,10 @@
     SSLCertificateFile {{ nextcloud_tls_cert }}
     SSLCertificateKeyFile {{ nextcloud_tls_key }}
     SSLProtocol ALL -SSLv2 -SSLv3 -TLSv1 -TLSv1.1
+    SSLCipherSuite ECDHE+AESGCM:DHE+AESGCM:!aNULL:!eNULL:!LOW:!3DES:!RC4:!MD5
+    SSLHonorCipherOrder On
 
-    Header always set Strict-Transport-Security "max-age=6307200;"
+    Header always set Strict-Transport-Security "max-age=63072000; includeSubDomains"
 
     # Required for WebDAV/CalDAV/CardDAV auth header passthrough
     ProxyFCGIBackendType FPM

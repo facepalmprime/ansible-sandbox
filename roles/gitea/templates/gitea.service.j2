@@ -14,11 +14,18 @@ Restart=always
 Environment=USER={{ gitea_user }} HOME={{ gitea_home }} GITEA_WORK_DIR={{ gitea_home }}
 NoNewPrivileges=yes
 PrivateTmp=yes
-ProtectSystem=full
+ProtectSystem=strict
 ProtectHome=yes
 PrivateDevices=yes
 ReadWritePaths={{ gitea_home }} {{ gitea_config_dir }}
 CapabilityBoundingSet=
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+RemoveIPC=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
 
 [Install]
 WantedBy=multi-user.target

@@ -18,7 +18,15 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=true
+PrivateDevices=yes
 CapabilityBoundingSet=
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+RemoveIPC=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
 
 [Install]
 WantedBy=multi-user.target

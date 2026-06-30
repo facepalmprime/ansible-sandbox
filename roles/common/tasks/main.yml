@@ -116,7 +116,6 @@
     mode: '0644'
   tags: motd
 
-# - rpcbind audit
 - name: Check for active NFS exports
   ansible.builtin.command:
     cmd: showmount -e localhost

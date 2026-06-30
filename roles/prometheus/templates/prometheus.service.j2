@@ -25,6 +25,13 @@ PrivateDevices=true
 ReadWritePaths={{ prometheus_data_dir }}
 ReadOnlyPaths={{ prometheus_config_dir }}
 CapabilityBoundingSet=
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+RemoveIPC=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
 
 [Install]
 WantedBy=multi-user.target

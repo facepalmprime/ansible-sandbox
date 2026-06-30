@@ -16,6 +16,14 @@ ProtectHome=true
 ReadWritePaths={{ promtail_config_dir }} /var/lib/promtail
 PrivateTmp=true
 PrivateDevices=true
+CapabilityBoundingSet=
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+RemoveIPC=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
 
 [Install]
 WantedBy=multi-user.target

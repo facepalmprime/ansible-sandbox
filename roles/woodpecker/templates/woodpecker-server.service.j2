@@ -14,10 +14,17 @@ Restart=always
 RestartSec=2s
 NoNewPrivileges=yes
 PrivateTmp=yes
-ProtectSystem=full
+ProtectSystem=strict
 ReadWritePaths={{ woodpecker_home }} {{ woodpecker_config_dir }}
 CapabilityBoundingSet=
 ProtectHome=yes
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+RemoveIPC=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
 PrivateDevices=yes
 
 [Install]

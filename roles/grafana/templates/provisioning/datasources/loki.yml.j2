@@ -8,8 +8,5 @@ datasources:
     jsonData:
       maxLines: 1000
       tlsAuth: true
-    secureJsonData:
-      tlsClientCert: |
-        {{ lookup('file', lookup('env', 'HOME') + '/.ansible-sandbox-ca/' + inventory_hostname + '.crt') | indent(8) }}
-      tlsClientKey: |
-        {{ lookup('file', lookup('env', 'HOME') + '/.ansible-sandbox-ca/' + inventory_hostname + '.key') | indent(8) }}
+      tlsClientCertFile: /etc/grafana/pki/loki-client.crt
+      tlsClientKeyFile: /etc/grafana/pki/loki-client.key

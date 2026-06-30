@@ -2,16 +2,17 @@
 Description=Jellyfin Media Server (Podman container)
 After=network-online.target
 Wants=network-online.target
+RequiresMountsFor=/run/user/{{ jellyfin_uid }}/containers
 
 [Service]
-Type=forking
+User=jellyfin
+Group=jellyfin
+Environment=XDG_RUNTIME_DIR=/run/user/{{ jellyfin_uid }}
+Environment=HOME=/home/jellyfin
+Type=oneshot
+RemainAfterExit=yes
 Restart=on-failure
-RestartSec=30
-TimeoutStartSec=120
-NoNewPrivileges=true
-ProtectSystem=full
-PrivateTmp=true
-CapabilityBoundingSet=
+TimeoutStopSec=70
 
 ExecStartPre=-/usr/bin/podman stop jellyfin
 ExecStartPre=-/usr/bin/podman rm jellyfin
@@ -19,7 +20,7 @@ ExecStartPre=-/usr/bin/podman rm jellyfin
 ExecStart=/usr/bin/podman run \
     --detach \
     --name jellyfin \
-    --user {{ jellyfin_uid }}:{{ jellyfin_gid }} \
+    --userns=keep-id \
     --security-opt label=type:jellyfin_container_t \
     --security-opt no-new-privileges \
     --read-only \
@@ -27,7 +28,6 @@ ExecStart=/usr/bin/podman run \
     --tmpfs /run:rw,nosuid,nodev,size=64m \
     --cap-drop ALL \
     --memory {{ jellyfin_memory_limit }} \
-    --cpus {{ jellyfin_cpu_limit }} \
     -v {{ jellyfin_config_dir }}:/config \
     -v {{ jellyfin_cache_dir }}:/cache \
     -v /srv/media:/media:ro \
@@ -36,6 +36,12 @@ ExecStart=/usr/bin/podman run \
     {{ jellyfin_container_image }}@{{ jellyfin_container_digest }}
 
 ExecStop=-/usr/bin/podman stop jellyfin
+ExecStopPost=-/usr/bin/podman rm jellyfin
+
+SystemCallArchitectures=native
+RemoveIPC=yes
+RestrictRealtime=yes
+LockPersonality=yes
 
 [Install]
 WantedBy=multi-user.target

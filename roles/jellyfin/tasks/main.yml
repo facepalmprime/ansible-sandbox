@@ -138,6 +138,40 @@
     system: true
     state: present
 
+- name: Enable linger for jellyfin user (rootless Podman across reboots)
+  ansible.builtin.command:
+    cmd: loginctl enable-linger jellyfin
+  changed_when: false
+  when: env_name != 'molecule'
+
+- name: Ensure jellyfin subuid entry for user-namespace mapping
+  ansible.builtin.lineinfile:
+    path: /etc/subuid
+    line: "jellyfin:{{ jellyfin_subuid_start }}:65536"
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Ensure jellyfin subgid entry for user-namespace mapping
+  ansible.builtin.lineinfile:
+    path: /etc/subgid
+    line: "jellyfin:{{ jellyfin_subuid_start }}:65536"
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Migrate Podman storage to apply subuid/subgid mapping
+  ansible.builtin.command:
+    cmd: podman system migrate
+  changed_when: false
+  become: true
+  become_user: jellyfin
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ jellyfin_uid }}"
+  when: env_name != 'molecule'
+
 - name: Fix ownership of existing jellyfin data directories
   ansible.builtin.file:
     path: "{{ item }}"
@@ -181,41 +215,49 @@
     mode: "0640"
   when: env_name != 'molecule'
 
-- name: Generate TLS certificate signing request
-  community.crypto.openssl_csr:
-    path: "{{ jellyfin_config_dir }}/tls/jellyfin.csr"
+- name: Generate Jellyfin CSR (in-memory, control node)
+  community.crypto.openssl_csr_pipe:
     privatekey_path: "{{ jellyfin_tls_key }}"
     common_name: "{{ ansible_hostname }}"
     subject_alt_name:
       - "DNS:{{ ansible_hostname }}"
       - "IP:{{ ansible_default_ipv4.address }}"
-    owner: jellyfin
-    group: jellyfin
-    mode: "0640"
+  register: jellyfin_csr
   when: env_name != 'molecule'
 
-- name: Generate self-signed TLS certificate
-  community.crypto.x509_certificate:
-    path: "{{ jellyfin_tls_cert }}"
-    privatekey_path: "{{ jellyfin_tls_key }}"
-    csr_path: "{{ jellyfin_config_dir }}/tls/jellyfin.csr"
-    provider: selfsigned
-    selfsigned_not_after: "+825d"
+- name: Sign Jellyfin cert with internal CA
+  community.crypto.x509_certificate_pipe:
+    provider: ownca
+    csr_content: "{{ jellyfin_csr.csr }}"
+    ownca_path: "{{ jellyfin_ca_dir }}/ca.crt"
+    ownca_privatekey_path: "{{ jellyfin_ca_dir }}/ca.key"
+    ownca_not_after: "+365d"
+    ownca_not_before: "-1d"
+  delegate_to: localhost
+  become: false
+  register: jellyfin_cert
+  when: env_name != 'molecule'
+
+- name: Write CA-signed Jellyfin cert to managed node
+  ansible.builtin.copy:
+    content: "{{ jellyfin_cert.certificate }}"
+    dest: "{{ jellyfin_tls_cert }}"
     owner: jellyfin
     group: jellyfin
     mode: "0644"
   when: env_name != 'molecule'
+  notify: Restart jellyfin
 
-- name: Bundle TLS cert and key into PKCS12
+- name: Bundle TLS cert and key into PKCS12 with vault passphrase
   ansible.builtin.command:
     cmd: >
       openssl pkcs12 -export
       -out {{ jellyfin_config_dir }}/tls/jellyfin.pfx
       -inkey {{ jellyfin_tls_key }}
       -in {{ jellyfin_tls_cert }}
-      -passout pass:
-    creates: "{{ jellyfin_config_dir }}/tls/jellyfin.pfx"
-  changed_when: false
+      -passout pass:{{ vault_jellyfin_cert_password }}
+  no_log: true
+  changed_when: true
   when: env_name != 'molecule'
 
 - name: Set ownership on PKCS12 bundle
@@ -230,6 +272,10 @@
   ansible.builtin.command:
     cmd: "podman pull {{ jellyfin_container_image }}@{{ jellyfin_container_digest }}"
   changed_when: false
+  become: true
+  become_user: jellyfin
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ jellyfin_uid }}"
   when: env_name != 'molecule'
 
 - name: Check if Jellyfin system.xml exists

@@ -14,11 +14,19 @@ RestartSec=5s
 
 NoNewPrivileges=true
 ProtectSystem=strict
+ProtectHome=yes
 PrivateTmp=true
 PrivateDevices=true
 CapabilityBoundingSet=
 ReadWritePaths={{ grafana_data_dir }}
 ReadOnlyPaths={{ grafana_config_dir }}
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+RemoveIPC=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
 
 [Install]
 WantedBy=multi-user.target

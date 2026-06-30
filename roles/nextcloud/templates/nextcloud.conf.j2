@@ -14,7 +14,7 @@ server {
     ssl_certificate {{ nextcloud_tls_cert }};
     ssl_certificate_key {{ nextcloud_tls_key }};
     ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_ciphers EECDH+AESGCM:EDH+AESGCM:!aNULL:!eNULL:!LOW:!3DES:!RC4:!MD5:!EXP:!PSK:!SRP:!DSS;
     ssl_prefer_server_ciphers on;
     ssl_session_cache shared:NC_SSL:10m;
     ssl_session_timeout 10m;

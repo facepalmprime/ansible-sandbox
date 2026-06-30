@@ -1147,7 +1147,7 @@
     #
     # Allowed values are:
     #     A valid Pi-hole password hash
-   pwhash = ""
+   pwhash = "{{ vault_pihole_pwhash }}"
     # Pi-hole 2FA TOTP secret. When set to something different than an empty string, 2FA
     # authentication will be enforced for the API and the web interface. This setting is
     # write-only, the secret itself cannot be read back, but the CLI will show "********"

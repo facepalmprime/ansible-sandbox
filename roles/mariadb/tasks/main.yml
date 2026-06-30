@@ -27,6 +27,7 @@
     encoding: utf8mb4
     collation: utf8mb4_unicode_ci
     login_unix_socket: /var/lib/mysql/mysql.sock
+  no_log: true
 
 - name: Create Gitea database user
   ansible.mysql.mysql_user:
@@ -35,6 +36,7 @@
     priv: "{{ mariadb_gitea_db }}.*:ALL"
     state: present
     login_unix_socket: /var/lib/mysql/mysql.sock
+  no_log: true
 
 - name: Remove anonymous MariaDB users
   ansible.mysql.mysql_user:

@@ -8,8 +8,10 @@ jellyfin_config_dir: /etc/jellyfin
 jellyfin_cache_dir: /var/cache/jellyfin
 jellyfin_tls_cert: /etc/jellyfin/tls/jellyfin.crt
 jellyfin_tls_key: /etc/jellyfin/tls/jellyfin.key
+jellyfin_ca_dir: "{{ lookup('env', 'HOME') }}/.ansible-sandbox-ca"
 jellyfin_uid: 970
 jellyfin_gid: 970
+jellyfin_subuid_start: 1000000
 jellyfin_memory_limit: "2g"
 jellyfin_cpu_limit: "2.0"
 jellyfin_media_dirs:
